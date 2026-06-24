@@ -7,27 +7,28 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { getTenants } from '@/api/tenants';
-import { getSubscriptionPlan, getSubscriptionsByTenant } from '@/api/subscriptions';
+import { getAppContext, parseAppModules } from '@/api/appContext';
+import { canAccessModule } from '@/config/permissions';
 import { useAuth } from '@/contexts/AuthContext';
-import type { FeatureModuleName, Tenant } from '@/types';
+import type { FeatureModuleName, FirmRoleValue, Tenant } from '@/types';
 import { STORAGE_KEYS } from '@/types';
-import { parseEnabledModules } from '@/utils/jwt';
 
 interface TenantContextValue {
   tenants: Tenant[];
   tenantId: string | null;
   tenantName: string | null;
   enabledModules: FeatureModuleName[];
+  firmRole: FirmRoleValue | null;
+  secondaryFirmRole: FirmRoleValue | null;
   isLoading: boolean;
+  isReady: boolean;
   setTenantId: (tenantId: string) => void;
   refreshTenantContext: () => Promise<void>;
   hasModule: (module: FeatureModuleName) => boolean;
+  canSwitchTenant: boolean;
 }
 
 const TenantContext = createContext<TenantContextValue | null>(null);
-
-const ALL_MODULES: FeatureModuleName[] = ['Metraj', 'Puantaj', 'Hakedis'];
 
 export function TenantProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated, isAdmin } = useAuth();
@@ -36,7 +37,22 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     localStorage.getItem(STORAGE_KEYS.tenantId),
   );
   const [enabledModules, setEnabledModules] = useState<FeatureModuleName[]>([]);
+  const [firmRole, setFirmRole] = useState<FirmRoleValue | null>(null);
+  const [secondaryFirmRole, setSecondaryFirmRole] = useState<FirmRoleValue | null>(null);
+  const [canSwitchTenant, setCanSwitchTenant] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isReady, setIsReady] = useState(false);
+
+  const resetTenantState = useCallback(() => {
+    setTenants([]);
+    setTenantIdState(null);
+    setEnabledModules([]);
+    setFirmRole(null);
+    setSecondaryFirmRole(null);
+    setCanSwitchTenant(false);
+    setIsReady(false);
+    localStorage.removeItem(STORAGE_KEYS.tenantId);
+  }, []);
 
   const setTenantId = useCallback((id: string) => {
     localStorage.setItem(STORAGE_KEYS.tenantId, id);
@@ -50,49 +66,43 @@ export function TenantProvider({ children }: { children: ReactNode }) {
 
     setIsLoading(true);
     try {
-      const tenantResponse = await getTenants();
-      const tenantItems = tenantResponse.items ?? [];
+      const context = await getAppContext(tenantId ?? undefined);
+      const tenantItems: Tenant[] = (context.tenants ?? []).map((tenant) => ({
+        id: tenant.id,
+        name: tenant.name,
+        isActive: true,
+      }));
+
       setTenants(tenantItems);
+      setCanSwitchTenant(context.canSwitchTenant && context.isGlobalAdmin);
+      setEnabledModules(parseAppModules(context.enabledModules ?? []));
+      setFirmRole(context.firmRole ?? null);
+      setSecondaryFirmRole(context.secondaryFirmRole ?? null);
 
-      const activeTenantId =
-        tenantId && tenantItems.some((tenant) => tenant.id === tenantId)
-          ? tenantId
-          : tenantItems[0]?.id ?? null;
-
+      const activeTenantId = context.tenantId ?? tenantItems[0]?.id ?? null;
       if (activeTenantId && activeTenantId !== tenantId) {
         setTenantId(activeTenantId);
+      } else if (!activeTenantId) {
+        setTenantIdState(null);
+        localStorage.removeItem(STORAGE_KEYS.tenantId);
       }
 
-      if (!activeTenantId) {
-        setEnabledModules(isAdmin ? ALL_MODULES : []);
-        return;
-      }
-
-      if (isAdmin) {
-        setEnabledModules(ALL_MODULES);
-        return;
-      }
-
-      const subscriptions = await getSubscriptionsByTenant(activeTenantId);
-      const activeSubscription =
-        subscriptions.find((item) => item.status === 1) ?? subscriptions[0];
-
-      if (!activeSubscription) {
-        setEnabledModules([]);
-        return;
-      }
-
-      const plan = await getSubscriptionPlan(activeSubscription.subscriptionPlanId);
-      const modules = parseEnabledModules(plan.enabledModules) as FeatureModuleName[];
-      setEnabledModules(modules);
+      setIsReady(true);
+    } catch {
+      resetTenantState();
     } finally {
       setIsLoading(false);
     }
-  }, [isAuthenticated, isAdmin, tenantId, setTenantId]);
+  }, [isAuthenticated, resetTenantState, setTenantId, tenantId]);
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      resetTenantState();
+      return;
+    }
+
     void refreshTenantContext();
-  }, [refreshTenantContext]);
+  }, [isAuthenticated, refreshTenantContext, resetTenantState]);
 
   const tenantName = useMemo(() => {
     return tenants.find((tenant) => tenant.id === tenantId)?.name ?? null;
@@ -100,12 +110,13 @@ export function TenantProvider({ children }: { children: ReactNode }) {
 
   const hasModule = useCallback(
     (module: FeatureModuleName) => {
-      if (isAdmin) {
-        return true;
+      if (!isReady) {
+        return false;
       }
-      return enabledModules.includes(module);
+
+      return canAccessModule(enabledModules, module, isAdmin);
     },
-    [enabledModules, isAdmin],
+    [enabledModules, isAdmin, isReady],
   );
 
   const value = useMemo(
@@ -114,20 +125,28 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       tenantId,
       tenantName,
       enabledModules,
+      firmRole,
+      secondaryFirmRole,
       isLoading,
+      isReady,
       setTenantId,
       refreshTenantContext,
       hasModule,
+      canSwitchTenant,
     }),
     [
       tenants,
       tenantId,
       tenantName,
       enabledModules,
+      firmRole,
+      secondaryFirmRole,
       isLoading,
+      isReady,
       setTenantId,
       refreshTenantContext,
       hasModule,
+      canSwitchTenant,
     ],
   );
 

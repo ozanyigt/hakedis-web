@@ -1,4 +1,5 @@
 import { Navigate, Outlet } from 'react-router-dom';
+import { hasAnyClaim, hasClaim } from '@/config/permissions';
 import { useAuth } from '@/contexts/AuthContext';
 import type { FeatureModuleName } from '@/types';
 import { useTenant } from '@/contexts/TenantContext';
@@ -16,19 +17,39 @@ export function ProtectedRoute() {
 interface FeatureGateProps {
   module?: FeatureModuleName;
   adminOnly?: boolean;
+  claim?: string;
+  anyClaim?: string[];
   children: React.ReactNode;
 }
 
-export function FeatureGate({ module, adminOnly, children }: FeatureGateProps) {
-  const { isAdmin } = useAuth();
-  const { hasModule } = useTenant();
+export function FeatureGate({ module, adminOnly, claim, anyClaim, children }: FeatureGateProps) {
+  const { isAdmin, roles } = useAuth();
+  const { isReady, hasModule } = useTenant();
+
+  if (!isReady && module) {
+    return null;
+  }
 
   if (adminOnly && !isAdmin) {
     return <Navigate to="/" replace />;
   }
 
-  if (module && !hasModule(module)) {
+  if (anyClaim && !hasAnyClaim(roles, anyClaim)) {
     return <Navigate to="/" replace />;
+  }
+
+  if (claim && !hasClaim(roles, claim)) {
+    return <Navigate to="/" replace />;
+  }
+
+  if (module) {
+    if (!isReady) {
+      return null;
+    }
+
+    if (!hasModule(module)) {
+      return <Navigate to="/" replace />;
+    }
   }
 
   return <>{children}</>;

@@ -1,4 +1,6 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
+import { notifyUnauthorized } from '@/api/authSession';
+import { ApiError, extractApiErrorMessage } from '@/utils/apiError';
 import { STORAGE_KEYS } from '@/types';
 
 const baseURL = import.meta.env.VITE_API_BASE_URL ?? '/api';
@@ -24,35 +26,30 @@ apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 
 apiClient.interceptors.response.use(
   (response) => response,
-  (error: AxiosError<{
-    message?: string;
-    title?: string;
-    errorMessage?: string;
-    errors?: Record<string, string[]>;
-  }>) => {
-    const validationMessages = error.response?.data?.errors
-      ? Object.values(error.response.data.errors).flat()
-      : [];
+  (error: AxiosError) => {
+    const statusCode = error.response?.status;
 
-    const message =
-      validationMessages.join(' ') ||
-      error.response?.data?.errorMessage ||
-      error.response?.data?.message ||
-      error.response?.data?.title ||
-      error.message ||
-      'Beklenmeyen bir hata oluştu.';
+    if (statusCode === 401) {
+      const detail =
+        typeof error.response?.data === 'object' &&
+        error.response?.data !== null &&
+        'detail' in error.response.data
+          ? String((error.response.data as { detail?: string }).detail ?? '')
+          : '';
+      const shouldLogout =
+        detail.toLowerCase().includes('not authenticated') || detail.length === 0;
 
-    if (error.response?.status === 401) {
-      localStorage.removeItem(STORAGE_KEYS.accessToken);
+      if (shouldLogout) {
+        localStorage.removeItem(STORAGE_KEYS.accessToken);
+        notifyUnauthorized();
+      }
     }
 
-    return Promise.reject(new Error(message));
+    const message = extractApiErrorMessage(error);
+    return Promise.reject(new ApiError(message, statusCode));
   },
 );
 
 export function getApiErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return 'Beklenmeyen bir hata oluştu.';
+  return extractApiErrorMessage(error);
 }

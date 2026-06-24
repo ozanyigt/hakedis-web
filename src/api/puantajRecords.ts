@@ -17,7 +17,7 @@ export async function createPuantajRecord(payload: {
   siteId?: string | null;
   workerId?: string | null;
   workDate: string;
-  workType: string;
+  workType: number;
   dayCount: number;
   overtimeHours: number;
   status: number;
@@ -34,7 +34,7 @@ export async function updatePuantajRecord(payload: {
   siteId?: string | null;
   workerId?: string | null;
   workDate: string;
-  workType: string;
+  workType: number;
   dayCount: number;
   overtimeHours: number;
   status: number;

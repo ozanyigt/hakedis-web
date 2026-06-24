@@ -7,6 +7,7 @@ import {
   FolderKanban,
   LayoutDashboard,
   Receipt,
+  Users,
 } from 'lucide-react';
 
 export interface MenuItem {
@@ -16,6 +17,8 @@ export interface MenuItem {
   icon: LucideIcon;
   always?: boolean;
   adminOnly?: boolean;
+  claim?: string;
+  anyClaim?: string[];
   module?: FeatureModuleName;
 }
 
@@ -35,11 +38,18 @@ export const MENU_ITEMS: MenuItem[] = [
     adminOnly: true,
   },
   {
+    key: 'users',
+    label: 'Kullanıcılar',
+    path: '/users',
+    icon: Users,
+    claim: 'Users.Read',
+  },
+  {
     key: 'projects',
     label: 'Projeler',
     path: '/projects',
     icon: FolderKanban,
-    always: true,
+    anyClaim: ['Projects.Admin', 'Sites.Admin'],
   },
   {
     key: 'metraj',

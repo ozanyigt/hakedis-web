@@ -16,7 +16,7 @@ export async function createContractItem(payload: {
   projectId: string;
   kalemType: number;
   description: string;
-  unit: string;
+  unit: number;
   unitPrice: number;
   contractQuantity?: number | null;
   sortOrder: number;
@@ -31,7 +31,7 @@ export async function updateContractItem(payload: {
   projectId: string;
   kalemType: number;
   description: string;
-  unit: string;
+  unit: number;
   unitPrice: number;
   contractQuantity?: number | null;
   sortOrder: number;

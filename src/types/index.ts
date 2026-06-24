@@ -1,5 +1,44 @@
 export type FeatureModuleName = 'Metraj' | 'Puantaj' | 'Hakedis';
 
+export type FirmRoleValue = 1 | 2 | 3 | 4 | 5 | 6;
+
+export interface AppUser {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  status: boolean;
+  tenantId?: string | null;
+  firmRole?: FirmRoleValue | null;
+  secondaryFirmRole?: FirmRoleValue | null;
+}
+
+export interface FirmRoleOption {
+  value: FirmRoleValue;
+  label: string;
+  description: string;
+}
+
+export interface CreateUserPayload {
+  firstName: string;
+  lastName: string;
+  email: string;
+  password: string;
+  tenantId?: string;
+  firmRole: FirmRoleValue;
+  secondaryFirmRole?: FirmRoleValue | null;
+}
+
+export interface UpdateUserPayload {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  password?: string;
+  firmRole: FirmRoleValue;
+  secondaryFirmRole?: FirmRoleValue | null;
+}
+
 export type DrawingStatus = 'Uploaded' | 'Parsing' | 'Parsed' | 'Failed';
 
 export interface AccessToken {
@@ -27,6 +66,17 @@ export interface Tenant {
   name: string;
   taxNumber?: string;
   isActive: boolean;
+}
+
+export interface AppContext {
+  isGlobalAdmin: boolean;
+  firmRole?: FirmRoleValue | null;
+  secondaryFirmRole?: FirmRoleValue | null;
+  tenantId?: string | null;
+  tenantName?: string | null;
+  enabledModules: string[];
+  canSwitchTenant: boolean;
+  tenants: Array<{ id: string; name: string }>;
 }
 
 export interface Project {
@@ -77,7 +127,7 @@ export interface MetrajResult {
   projectId: string;
   drawingId: string;
   kalemType: number;
-  unit: string;
+  unit: number;
   quantity: number;
   floorName?: string | null;
   spaceName?: string | null;
@@ -103,6 +153,7 @@ export interface Site {
   code?: string | null;
   location?: string | null;
   status: number;
+  description?: string | null;
 }
 
 export interface PuantajRecord {
@@ -112,7 +163,7 @@ export interface PuantajRecord {
   siteId?: string | null;
   workerId?: string | null;
   workDate: string;
-  workType: string;
+  workType: number;
   dayCount: number;
   overtimeHours: number;
   status: number;
@@ -126,7 +177,7 @@ export interface ContractItem {
   projectId: string;
   kalemType: number;
   description: string;
-  unit: string;
+  unit: number;
   unitPrice: number;
   contractQuantity?: number | null;
   sortOrder: number;
@@ -161,6 +212,16 @@ export interface ProgressEntry {
   notes?: string | null;
 }
 
+export interface HakedisDeductionLine {
+  id: string;
+  tenantId: string;
+  hakedisPeriodId: string;
+  category: number;
+  description: string;
+  amount: number;
+  notes?: string | null;
+}
+
 export interface JwtPayload {
   sub?: string;
   email?: string;
@@ -171,6 +232,11 @@ export const PROJECT_STATUS_LABELS: Record<number, string> = {
   1: 'Aktif',
   2: 'Tamamlandı',
   3: 'Askıda',
+};
+
+export const SITE_STATUS_LABELS: Record<number, string> = {
+  1: 'Aktif',
+  2: 'Tamamlandı',
 };
 
 export const DRAWING_STATUS_LABELS: Record<number, string> = {
@@ -187,6 +253,43 @@ export const METRAJ_KALEM_LABELS: Record<number, string> = {
   4: 'Dış Cephe Mantolama',
   5: 'Şap Beton',
   6: 'Kalıp',
+};
+
+export const MEASUREMENT_UNIT_LABELS: Record<number, string> = {
+  1: 'm²',
+  2: 'm³',
+  3: 'm',
+  4: 'kg',
+  5: 'ton',
+  6: 'adet',
+  7: 'takım',
+};
+
+export const DEFAULT_UNIT_BY_KALEM: Record<number, number> = {
+  1: 1,
+  2: 1,
+  3: 1,
+  4: 1,
+  5: 1,
+  6: 1,
+};
+
+export const ALLOWED_UNITS_BY_KALEM: Record<number, number[]> = {
+  1: [1, 2, 3, 6],
+  2: [1, 2, 3, 6],
+  3: [1, 2, 3, 6],
+  4: [1, 2, 3, 6],
+  5: [1, 2],
+  6: [1, 2],
+};
+
+export const WORK_TYPE_LABELS: Record<number, string> = {
+  1: 'Gündüz',
+  2: 'Gece',
+  3: 'Hafta Sonu',
+  4: 'Resmi Tatil',
+  5: 'İzin',
+  6: 'Rapor',
 };
 
 export const PUANTAJ_STATUS_LABELS: Record<number, string> = {
@@ -215,6 +318,14 @@ export const HAKEDIS_STATUS_COLORS: Record<number, string> = {
   2: 'bg-blue-100 text-blue-700',
   3: 'bg-emerald-100 text-emerald-700',
   4: 'bg-red-100 text-red-700',
+};
+
+export const DEDUCTION_CATEGORY_LABELS: Record<number, string> = {
+  1: 'Malzeme',
+  2: 'Makine',
+  3: 'Yemek',
+  4: 'İlave',
+  5: 'Diğer',
 };
 
 export const STORAGE_KEYS = {

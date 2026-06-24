@@ -2,6 +2,16 @@ import { useCallback, useEffect, useState } from 'react';
 import { Download, Loader2, Plus, Trash2 } from 'lucide-react';
 import { getApiErrorMessage } from '@/api/client';
 import {
+  exportContractItemsExcel,
+  exportHakedisExcel,
+} from '@/api/exports';
+import {
+  createDeductionLine,
+  deleteDeductionLine,
+  getDeductionLinesByPeriod,
+  updateDeductionLine,
+} from '@/api/hakedisDeductionLines';
+import {
   createContractItem,
   deleteContractItem,
   getContractItemsByProject,
@@ -21,15 +31,22 @@ import {
   updateProgressEntry,
 } from '@/api/progressEntries';
 import { getProjectsByTenant } from '@/api/projects';
+import { FormField, formInputClass } from '@/components/FormField';
+import { ExportExcelButton } from '@/components/ExportExcelButton';
 import { useTenant } from '@/contexts/TenantContext';
-import type { ContractItem, HakedisPeriod, MetrajResult, ProgressEntry, Project } from '@/types';
+import { buildContractItemForm, buildPeriodForm, nextSortOrder } from '@/utils/formDefaults';
+import type { ContractItem, HakedisDeductionLine, HakedisPeriod, MetrajResult, ProgressEntry, Project } from '@/types';
 import {
+  ALLOWED_UNITS_BY_KALEM,
+  DEFAULT_UNIT_BY_KALEM,
+  DEDUCTION_CATEGORY_LABELS,
   HAKEDIS_STATUS_COLORS,
   HAKEDIS_STATUS_LABELS,
+  MEASUREMENT_UNIT_LABELS,
   METRAJ_KALEM_LABELS,
 } from '@/types';
 
-type Tab = 'contract' | 'periods' | 'progress';
+type Tab = 'contract' | 'periods' | 'deductions' | 'progress';
 
 const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -37,27 +54,16 @@ function formatMoney(value: number) {
   return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(value);
 }
 
-const EMPTY_CONTRACT_FORM = {
-  kalemType: '1',
-  description: '',
-  unit: 'm²',
-  unitPrice: '',
-  contractQuantity: '',
-  sortOrder: '1',
-};
-
-const EMPTY_PERIOD_FORM = {
-  periodNumber: '1',
-  name: '',
-  periodStart: new Date().toISOString().slice(0, 10),
-  periodEnd: new Date().toISOString().slice(0, 10),
-  deductionAmount: '0',
-  notes: '',
-};
-
 const EMPTY_PROGRESS_FORM = {
   contractItemId: '',
   quantityThisPeriod: '',
+  notes: '',
+};
+
+const EMPTY_DEDUCTION_FORM = {
+  category: '1',
+  description: '',
+  amount: '',
   notes: '',
 };
 
@@ -77,14 +83,18 @@ export function HakedisPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const [contractForm, setContractForm] = useState(EMPTY_CONTRACT_FORM);
+  const [contractForm, setContractForm] = useState(() => buildContractItemForm([]));
   const [editingContractId, setEditingContractId] = useState<string | null>(null);
 
-  const [periodForm, setPeriodForm] = useState(EMPTY_PERIOD_FORM);
+  const [periodForm, setPeriodForm] = useState(() => buildPeriodForm([]));
   const [editingPeriodId, setEditingPeriodId] = useState<string | null>(null);
 
   const [progressForm, setProgressForm] = useState(EMPTY_PROGRESS_FORM);
   const [editingProgressId, setEditingProgressId] = useState<string | null>(null);
+  const [deductionLines, setDeductionLines] = useState<HakedisDeductionLine[]>([]);
+  const [deductionForm, setDeductionForm] = useState(EMPTY_DEDUCTION_FORM);
+  const [editingDeductionId, setEditingDeductionId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const selectedPeriod = periods.find((p) => p.id === selectedPeriodId);
 
@@ -101,14 +111,14 @@ export function HakedisPage() {
     setLoading(true);
     setError(null);
     try {
-      const [items, periodItems, metrajItems] = await Promise.all([
+      const [items, periodItems, metrajResult] = await Promise.all([
         getContractItemsByProject(activeProjectId),
         getHakedisPeriodsByProject(activeProjectId),
-        getMetrajResultsByProject(activeProjectId),
+        getMetrajResultsByProject(activeProjectId).catch(() => [] as MetrajResult[]),
       ]);
       setContractItems(items);
       setPeriods(periodItems);
-      setMetrajResults(metrajItems);
+      setMetrajResults(metrajResult);
 
       if (periodItems.length > 0) {
         setSelectedPeriodId((prev) =>
@@ -144,6 +154,19 @@ export function HakedisPage() {
     }
   }, []);
 
+  const loadDeductionLinesForPeriod = useCallback(async (periodId: string) => {
+    if (!periodId) {
+      setDeductionLines([]);
+      return;
+    }
+    try {
+      const lines = await getDeductionLinesByPeriod(periodId);
+      setDeductionLines(lines);
+    } catch (loadError) {
+      setError(getApiErrorMessage(loadError));
+    }
+  }, []);
+
   useEffect(() => {
     async function loadProjects() {
       if (!tenantId) {
@@ -169,6 +192,31 @@ export function HakedisPage() {
   useEffect(() => {
     void loadProgressForPeriod(selectedPeriodId);
   }, [selectedPeriodId, loadProgressForPeriod]);
+
+  useEffect(() => {
+    void loadDeductionLinesForPeriod(selectedPeriodId);
+  }, [selectedPeriodId, loadDeductionLinesForPeriod]);
+
+  useEffect(() => {
+    setEditingContractId(null);
+    setEditingPeriodId(null);
+    setEditingProgressId(null);
+    setEditingDeductionId(null);
+    setDeductionForm(EMPTY_DEDUCTION_FORM);
+    setProgressForm(EMPTY_PROGRESS_FORM);
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!editingContractId) {
+      setContractForm(buildContractItemForm(contractItems));
+    }
+  }, [contractItems, editingContractId]);
+
+  useEffect(() => {
+    if (!editingPeriodId) {
+      setPeriodForm(buildPeriodForm(periods));
+    }
+  }, [periods, editingPeriodId]);
 
   function contractItemLabel(id: string) {
     const item = contractItems.find((c) => c.id === id);
@@ -216,10 +264,10 @@ export function HakedisPage() {
         projectId,
         kalemType: Number(contractForm.kalemType),
         description: contractForm.description.trim(),
-        unit: contractForm.unit.trim(),
+        unit: Number(contractForm.unit),
         unitPrice: Number(contractForm.unitPrice),
         contractQuantity: contractForm.contractQuantity ? Number(contractForm.contractQuantity) : null,
-        sortOrder: Number(contractForm.sortOrder),
+        sortOrder: Number(contractForm.sortOrder) || nextSortOrder(contractItems),
       };
       if (editingContractId) {
         await updateContractItem({ id: editingContractId, ...payload });
@@ -228,7 +276,7 @@ export function HakedisPage() {
         await createContractItem(payload);
         setMessage('Sözleşme kalemi eklendi.');
       }
-      setContractForm(EMPTY_CONTRACT_FORM);
+      setContractForm(buildContractItemForm(contractItems));
       setEditingContractId(null);
       await loadProjectData(projectId);
     } catch (saveError) {
@@ -247,7 +295,9 @@ export function HakedisPage() {
     setError(null);
     setMessage(null);
     try {
-      const deduction = Number(periodForm.deductionAmount);
+      const existing = editingPeriodId ? periods.find((p) => p.id === editingPeriodId) : null;
+      const existingTotal = existing?.totalAmount ?? 0;
+      const deduction = existing?.deductionAmount ?? 0;
       const payload = {
         tenantId,
         projectId,
@@ -256,11 +306,9 @@ export function HakedisPage() {
         periodStart: new Date(periodForm.periodStart).toISOString(),
         periodEnd: new Date(periodForm.periodEnd).toISOString(),
         status: editingPeriodId ? (periods.find((p) => p.id === editingPeriodId)?.status ?? 1) : 1,
-        totalAmount: editingPeriodId ? (periods.find((p) => p.id === editingPeriodId)?.totalAmount ?? 0) : 0,
+        totalAmount: existingTotal,
         deductionAmount: deduction,
-        netAmount: editingPeriodId
-          ? (periods.find((p) => p.id === editingPeriodId)?.totalAmount ?? 0) - deduction
-          : -deduction,
+        netAmount: existingTotal - deduction,
         notes: periodForm.notes.trim() || null,
       };
       if (editingPeriodId) {
@@ -271,7 +319,7 @@ export function HakedisPage() {
         setSelectedPeriodId(created.id);
         setMessage('Hakediş dönemi oluşturuldu.');
       }
-      setPeriodForm(EMPTY_PERIOD_FORM);
+      setPeriodForm(buildPeriodForm(periods));
       setEditingPeriodId(null);
       await loadProjectData(projectId);
     } catch (saveError) {
@@ -405,6 +453,66 @@ export function HakedisPage() {
     }
   }
 
+  async function handleSaveDeduction() {
+    if (!tenantId || !selectedPeriodId || !deductionForm.description.trim()) {
+      setError('Kesinti açıklaması zorunludur.');
+      return;
+    }
+    const amount = Number(deductionForm.amount);
+    if (!amount || amount <= 0) {
+      setError('Geçerli bir kesinti tutarı girin.');
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const payload = {
+        tenantId,
+        hakedisPeriodId: selectedPeriodId,
+        category: Number(deductionForm.category),
+        description: deductionForm.description.trim(),
+        amount,
+        notes: deductionForm.notes.trim() || null,
+      };
+      if (editingDeductionId) {
+        await updateDeductionLine({ id: editingDeductionId, ...payload });
+        setMessage('Kesinti satırı güncellendi.');
+      } else {
+        await createDeductionLine(payload);
+        setMessage('Kesinti satırı eklendi.');
+      }
+      setDeductionForm(EMPTY_DEDUCTION_FORM);
+      setEditingDeductionId(null);
+      await loadProjectData(projectId);
+      await loadDeductionLinesForPeriod(selectedPeriodId);
+    } catch (saveError) {
+      setError(getApiErrorMessage(saveError));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleExportExcel(kind: 'hakedis' | 'contract') {
+    if (!tenantId || !projectId || !GUID_PATTERN.test(projectId)) return;
+    setExporting(true);
+    setError(null);
+    try {
+      if (kind === 'contract') {
+        await exportContractItemsExcel(tenantId, projectId);
+        setMessage('Sözleşme kalemleri Excel olarak indirildi.');
+      } else {
+        await exportHakedisExcel(tenantId, projectId);
+        setMessage('Hakediş paketi Excel olarak indirildi.');
+      }
+    } catch (exportError) {
+      setError(getApiErrorMessage(exportError));
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <section>
@@ -415,23 +523,39 @@ export function HakedisPage() {
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <label className="block text-sm font-medium text-slate-700">
-          Proje
-          <select
-            className="mt-1 w-full max-w-md rounded-lg border border-slate-300 px-3 py-2"
-            value={projectId}
-            onChange={(e) => setProjectId(e.target.value)}
-          >
-            <option value="">Proje seçin</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
-        </label>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <label className="block text-sm font-medium text-slate-700">
+            Proje
+            <select
+              className="mt-1 w-full max-w-md rounded-lg border border-slate-300 px-3 py-2"
+              value={projectId}
+              onChange={(e) => setProjectId(e.target.value)}
+            >
+              <option value="">Proje seçin</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <ExportExcelButton
+              label="Hakediş Excel"
+              disabled={!projectId || periods.length === 0}
+              loading={exporting}
+              onClick={() => void handleExportExcel('hakedis')}
+            />
+            <ExportExcelButton
+              label="Kalemler Excel"
+              disabled={!projectId || contractItems.length === 0}
+              loading={exporting}
+              onClick={() => void handleExportExcel('contract')}
+            />
+          </div>
+        </div>
       </section>
 
       <div className="flex flex-wrap gap-2 border-b border-slate-200">
-        {(['contract', 'periods', 'progress'] as Tab[]).map((t) => (
+        {(['contract', 'periods', 'deductions', 'progress'] as Tab[]).map((t) => (
           <button
             key={t}
             type="button"
@@ -440,7 +564,13 @@ export function HakedisPage() {
               tab === t ? 'border-b-2 border-brand-600 text-brand-700' : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            {t === 'contract' ? 'Sözleşme Kalemleri' : t === 'periods' ? 'Hakediş Dönemleri' : 'İlerleme Girişleri'}
+            {t === 'contract'
+              ? 'Sözleşme Kalemleri'
+              : t === 'periods'
+                ? 'Hakediş Dönemleri'
+                : t === 'deductions'
+                  ? 'Kesintiler'
+                  : 'İlerleme Girişleri'}
           </button>
         ))}
       </div>
@@ -452,26 +582,93 @@ export function HakedisPage() {
         <div className="space-y-6">
           <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <h3 className="font-semibold text-slate-900">{editingContractId ? 'Kalem Düzenle' : 'Yeni Sözleşme Kalemi'}</h3>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <select
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                value={contractForm.kalemType}
-                onChange={(e) => setContractForm({ ...contractForm, kalemType: e.target.value })}
-              >
-                {Object.entries(METRAJ_KALEM_LABELS).map(([k, label]) => (
-                  <option key={k} value={k}>{label}</option>
-                ))}
-              </select>
-              <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Açıklama *" value={contractForm.description} onChange={(e) => setContractForm({ ...contractForm, description: e.target.value })} />
-              <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Birim" value={contractForm.unit} onChange={(e) => setContractForm({ ...contractForm, unit: e.target.value })} />
-              <input type="number" min="0" step="0.01" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Birim fiyat (₺)" value={contractForm.unitPrice} onChange={(e) => setContractForm({ ...contractForm, unitPrice: e.target.value })} />
-              <input type="number" min="0" step="0.001" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Sözleşme miktarı" value={contractForm.contractQuantity} onChange={(e) => setContractForm({ ...contractForm, contractQuantity: e.target.value })} />
-              <input type="number" min="1" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Sıra" value={contractForm.sortOrder} onChange={(e) => setContractForm({ ...contractForm, sortOrder: e.target.value })} />
+            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <FormField label="Kalem tipi" required>
+                <select
+                  className={formInputClass}
+                  value={contractForm.kalemType}
+                  onChange={(e) => {
+                    const kalemType = e.target.value;
+                    setContractForm({
+                      ...contractForm,
+                      kalemType,
+                      unit: String(DEFAULT_UNIT_BY_KALEM[Number(kalemType)] ?? 1),
+                    });
+                  }}
+                >
+                  {Object.entries(METRAJ_KALEM_LABELS).map(([k, label]) => (
+                    <option key={k} value={k}>{label}</option>
+                  ))}
+                </select>
+              </FormField>
+              <FormField label="Açıklama" required>
+                <input
+                  className={formInputClass}
+                  placeholder="Örn. Dış cephe duvarı"
+                  value={contractForm.description}
+                  onChange={(e) => setContractForm({ ...contractForm, description: e.target.value })}
+                />
+              </FormField>
+              <FormField label="Birim" required hint="Kalem tipine göre önerilir">
+                <select
+                  className={formInputClass}
+                  value={contractForm.unit}
+                  onChange={(e) => setContractForm({ ...contractForm, unit: e.target.value })}
+                >
+                  {(ALLOWED_UNITS_BY_KALEM[Number(contractForm.kalemType)] ?? [1]).map((unitValue) => (
+                    <option key={unitValue} value={unitValue}>
+                      {MEASUREMENT_UNIT_LABELS[unitValue]}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+              <FormField label="Birim fiyat (₺)" required>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className={formInputClass}
+                  placeholder="0,00"
+                  value={contractForm.unitPrice}
+                  onChange={(e) => setContractForm({ ...contractForm, unitPrice: e.target.value })}
+                />
+              </FormField>
+              <FormField label="Sözleşme miktarı" hint="Opsiyonel">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.001"
+                  className={formInputClass}
+                  placeholder="Boş bırakılabilir"
+                  value={contractForm.contractQuantity}
+                  onChange={(e) => setContractForm({ ...contractForm, contractQuantity: e.target.value })}
+                />
+              </FormField>
+              <FormField label="Sıra no" hint="Listede görünme sırası">
+                <input
+                  type="number"
+                  min="1"
+                  className={formInputClass}
+                  value={contractForm.sortOrder}
+                  onChange={(e) => setContractForm({ ...contractForm, sortOrder: e.target.value })}
+                />
+              </FormField>
             </div>
-            <button type="button" disabled={saving || !projectId} onClick={() => void handleSaveContract()} className="mt-4 inline-flex items-center gap-1 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
+            <div className="mt-4 flex gap-2">
+            <button type="button" disabled={saving || !projectId} onClick={() => void handleSaveContract()} className="inline-flex items-center gap-1 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
               {saving ? <Loader2 className="animate-spin" size={14} /> : <Plus size={14} />}
               {editingContractId ? 'Güncelle' : 'Ekle'}
             </button>
+            {editingContractId ? (
+              <button
+                type="button"
+                onClick={() => { setEditingContractId(null); setContractForm(buildContractItemForm(contractItems)); }}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700"
+              >
+                İptal
+              </button>
+            ) : null}
+            </div>
           </div>
 
           <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -494,12 +691,12 @@ export function HakedisPage() {
                   <tr key={c.id} className="border-b border-slate-100 last:border-0">
                     <td className="px-4 py-3 font-medium">{METRAJ_KALEM_LABELS[c.kalemType]}</td>
                     <td className="px-4 py-3">{c.description}</td>
-                    <td className="px-4 py-3">{c.unit}</td>
+                    <td className="px-4 py-3">{MEASUREMENT_UNIT_LABELS[c.unit] ?? c.unit}</td>
                     <td className="px-4 py-3">{formatMoney(c.unitPrice)}</td>
                     <td className="px-4 py-3">{c.contractQuantity ?? '-'}</td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
-                        <button type="button" className="rounded border border-slate-300 px-2 py-0.5 text-xs" onClick={() => { setEditingContractId(c.id); setContractForm({ kalemType: String(c.kalemType), description: c.description, unit: c.unit, unitPrice: String(c.unitPrice), contractQuantity: c.contractQuantity ? String(c.contractQuantity) : '', sortOrder: String(c.sortOrder) }); }}>Düzenle</button>
+                        <button type="button" className="rounded border border-slate-300 px-2 py-0.5 text-xs" onClick={() => { setEditingContractId(c.id); setContractForm({ kalemType: String(c.kalemType), description: c.description, unit: String(c.unit), unitPrice: String(c.unitPrice), contractQuantity: c.contractQuantity ? String(c.contractQuantity) : '', sortOrder: String(c.sortOrder) }); }}>Düzenle</button>
                         <button type="button" className="rounded border border-red-200 px-2 py-0.5 text-xs text-red-600" onClick={() => void deleteContractItem(c.id).then(() => loadProjectData(projectId))}><Trash2 size={12} /></button>
                       </div>
                     </td>
@@ -515,18 +712,64 @@ export function HakedisPage() {
         <div className="space-y-6">
           <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <h3 className="font-semibold text-slate-900">{editingPeriodId ? 'Dönem Düzenle' : 'Yeni Hakediş Dönemi'}</h3>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <input type="number" min="1" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Dönem no" value={periodForm.periodNumber} onChange={(e) => setPeriodForm({ ...periodForm, periodNumber: e.target.value })} />
-              <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Dönem adı *" value={periodForm.name} onChange={(e) => setPeriodForm({ ...periodForm, name: e.target.value })} />
-              <input type="date" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" value={periodForm.periodStart} onChange={(e) => setPeriodForm({ ...periodForm, periodStart: e.target.value })} />
-              <input type="date" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" value={periodForm.periodEnd} onChange={(e) => setPeriodForm({ ...periodForm, periodEnd: e.target.value })} />
-              <input type="number" min="0" step="0.01" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Kesinti (₺)" value={periodForm.deductionAmount} onChange={(e) => setPeriodForm({ ...periodForm, deductionAmount: e.target.value })} />
-              <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Not" value={periodForm.notes} onChange={(e) => setPeriodForm({ ...periodForm, notes: e.target.value })} />
+            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <FormField label="Dönem no" required hint="Sözleşmedeki hakediş sırası">
+                <input
+                  type="number"
+                  min="1"
+                  className={formInputClass}
+                  value={periodForm.periodNumber}
+                  onChange={(e) => setPeriodForm({ ...periodForm, periodNumber: e.target.value })}
+                />
+              </FormField>
+              <FormField label="Dönem adı" required>
+                <input
+                  className={formInputClass}
+                  placeholder="Örn. 1. Hakediş"
+                  value={periodForm.name}
+                  onChange={(e) => setPeriodForm({ ...periodForm, name: e.target.value })}
+                />
+              </FormField>
+              <FormField label="Başlangıç tarihi" required>
+                <input
+                  type="date"
+                  className={formInputClass}
+                  value={periodForm.periodStart}
+                  onChange={(e) => setPeriodForm({ ...periodForm, periodStart: e.target.value })}
+                />
+              </FormField>
+              <FormField label="Bitiş tarihi" required>
+                <input
+                  type="date"
+                  className={formInputClass}
+                  value={periodForm.periodEnd}
+                  onChange={(e) => setPeriodForm({ ...periodForm, periodEnd: e.target.value })}
+                />
+              </FormField>
+              <FormField label="Not" hint="Opsiyonel">
+                <input
+                  className={formInputClass}
+                  placeholder="Dönem notu"
+                  value={periodForm.notes}
+                  onChange={(e) => setPeriodForm({ ...periodForm, notes: e.target.value })}
+                />
+              </FormField>
             </div>
-            <button type="button" disabled={saving || !projectId} onClick={() => void handleSavePeriod()} className="mt-4 inline-flex items-center gap-1 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
+            <div className="mt-4 flex gap-2">
+            <button type="button" disabled={saving || !projectId} onClick={() => void handleSavePeriod()} className="inline-flex items-center gap-1 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
               {saving ? <Loader2 className="animate-spin" size={14} /> : <Plus size={14} />}
               {editingPeriodId ? 'Güncelle' : 'Oluştur'}
             </button>
+            {editingPeriodId ? (
+              <button
+                type="button"
+                onClick={() => { setEditingPeriodId(null); setPeriodForm(buildPeriodForm(periods)); }}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700"
+              >
+                İptal
+              </button>
+            ) : null}
+            </div>
           </div>
 
           <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -583,6 +826,168 @@ export function HakedisPage() {
         </div>
       ) : null}
 
+      {tab === 'deductions' ? (
+        <div className="space-y-6">
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <label className="block text-sm font-medium text-slate-700">
+              Hakediş dönemi
+              <select
+                className="mt-1 w-full max-w-md rounded-lg border border-slate-300 px-3 py-2"
+                value={selectedPeriodId}
+                onChange={(e) => setSelectedPeriodId(e.target.value)}
+              >
+                <option value="">Dönem seçin</option>
+                {periods.map((p) => (
+                  <option key={p.id} value={p.id}>{p.periodNumber}. {p.name}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          {selectedPeriod ? (
+            <>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-lg bg-slate-50 px-4 py-3">
+                  <p className="text-xs text-slate-500">Brüt tutar</p>
+                  <p className="text-lg font-semibold">{formatMoney(selectedPeriod.totalAmount)}</p>
+                </div>
+                <div className="rounded-lg bg-slate-50 px-4 py-3">
+                  <p className="text-xs text-slate-500">Toplam kesinti</p>
+                  <p className="text-lg font-semibold text-red-700">{formatMoney(selectedPeriod.deductionAmount)}</p>
+                </div>
+                <div className="rounded-lg bg-slate-50 px-4 py-3">
+                  <p className="text-xs text-slate-500">Net tutar</p>
+                  <p className="text-lg font-semibold text-emerald-700">{formatMoney(selectedPeriod.netAmount)}</p>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <h3 className="font-semibold text-slate-900">{editingDeductionId ? 'Kesinti Düzenle' : 'Yeni Kesinti'}</h3>
+                <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <FormField label="Kategori" required>
+                    <select
+                      className={formInputClass}
+                      value={deductionForm.category}
+                      onChange={(e) => setDeductionForm({ ...deductionForm, category: e.target.value })}
+                    >
+                      {Object.entries(DEDUCTION_CATEGORY_LABELS).map(([value, label]) => (
+                        <option key={value} value={value}>{label}</option>
+                      ))}
+                    </select>
+                  </FormField>
+                  <FormField label="Açıklama" required>
+                    <input
+                      className={formInputClass}
+                      placeholder="Örn. Yemek kartı"
+                      value={deductionForm.description}
+                      onChange={(e) => setDeductionForm({ ...deductionForm, description: e.target.value })}
+                    />
+                  </FormField>
+                  <FormField label="Tutar (₺)" required>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className={formInputClass}
+                      value={deductionForm.amount}
+                      onChange={(e) => setDeductionForm({ ...deductionForm, amount: e.target.value })}
+                    />
+                  </FormField>
+                  <FormField label="Not">
+                    <input
+                      className={formInputClass}
+                      value={deductionForm.notes}
+                      onChange={(e) => setDeductionForm({ ...deductionForm, notes: e.target.value })}
+                    />
+                  </FormField>
+                </div>
+                <div className="mt-4 flex gap-2">
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => void handleSaveDeduction()}
+                    className="inline-flex items-center gap-1 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
+                  >
+                    {saving ? <Loader2 className="animate-spin" size={14} /> : <Plus size={14} />}
+                    {editingDeductionId ? 'Güncelle' : 'Ekle'}
+                  </button>
+                  {editingDeductionId ? (
+                    <button
+                      type="button"
+                      onClick={() => { setEditingDeductionId(null); setDeductionForm(EMPTY_DEDUCTION_FORM); }}
+                      className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700"
+                    >
+                      İptal
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="border-b border-slate-200 bg-slate-50 text-slate-600">
+                    <tr>
+                      <th className="px-4 py-3 font-medium">Kategori</th>
+                      <th className="px-4 py-3 font-medium">Açıklama</th>
+                      <th className="px-4 py-3 font-medium">Tutar</th>
+                      <th className="px-4 py-3 font-medium">Not</th>
+                      <th className="px-4 py-3 font-medium">İşlem</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {deductionLines.length === 0 ? (
+                      <tr><td colSpan={5} className="px-4 py-6 text-center text-slate-500">Kesinti satırı yok.</td></tr>
+                    ) : null}
+                    {deductionLines.map((line) => (
+                      <tr key={line.id} className="border-b border-slate-100 last:border-0">
+                        <td className="px-4 py-3">{DEDUCTION_CATEGORY_LABELS[line.category] ?? line.category}</td>
+                        <td className="px-4 py-3 font-medium">{line.description}</td>
+                        <td className="px-4 py-3">{formatMoney(line.amount)}</td>
+                        <td className="px-4 py-3 text-slate-600">{line.notes ?? '-'}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex gap-1">
+                            <button
+                              type="button"
+                              className="rounded border border-slate-300 px-2 py-0.5 text-xs"
+                              onClick={() => {
+                                setEditingDeductionId(line.id);
+                                setDeductionForm({
+                                  category: String(line.category),
+                                  description: line.description,
+                                  amount: String(line.amount),
+                                  notes: line.notes ?? '',
+                                });
+                              }}
+                            >
+                              Düzenle
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded border border-red-200 px-2 py-0.5 text-xs text-red-600"
+                              onClick={() => void deleteDeductionLine(line.id).then(async () => {
+                                await loadProjectData(projectId);
+                                await loadDeductionLinesForPeriod(selectedPeriodId);
+                                setMessage('Kesinti satırı silindi.');
+                              })}
+                            >
+                              Sil
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <p className="rounded-lg border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">
+              Kesinti girmek için önce bir hakediş dönemi seçin veya oluşturun.
+            </p>
+          )}
+        </div>
+      ) : null}
+
       {tab === 'progress' ? (
         <div className="space-y-6">
           <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -633,15 +1038,38 @@ export function HakedisPage() {
                     Metrajdan Aktar
                   </button>
                 </div>
-                <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                  <select className="rounded-lg border border-slate-300 px-3 py-2 text-sm" value={progressForm.contractItemId} onChange={(e) => setProgressForm({ ...progressForm, contractItemId: e.target.value })}>
-                    <option value="">Sözleşme kalemi *</option>
-                    {contractItems.map((c) => (
-                      <option key={c.id} value={c.id}>{METRAJ_KALEM_LABELS[c.kalemType]} — {c.description}</option>
-                    ))}
-                  </select>
-                  <input type="number" min="0" step="0.001" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Bu dönem miktarı" value={progressForm.quantityThisPeriod} onChange={(e) => setProgressForm({ ...progressForm, quantityThisPeriod: e.target.value })} />
-                  <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Not" value={progressForm.notes} onChange={(e) => setProgressForm({ ...progressForm, notes: e.target.value })} />
+                <div className="mt-4 grid gap-4 sm:grid-cols-3">
+                  <FormField label="Sözleşme kalemi" required>
+                    <select
+                      className={formInputClass}
+                      value={progressForm.contractItemId}
+                      onChange={(e) => setProgressForm({ ...progressForm, contractItemId: e.target.value })}
+                    >
+                      <option value="">Seçin</option>
+                      {contractItems.map((c) => (
+                        <option key={c.id} value={c.id}>{METRAJ_KALEM_LABELS[c.kalemType]} — {c.description}</option>
+                      ))}
+                    </select>
+                  </FormField>
+                  <FormField label="Bu dönem miktarı" required>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.001"
+                      className={formInputClass}
+                      placeholder="0"
+                      value={progressForm.quantityThisPeriod}
+                      onChange={(e) => setProgressForm({ ...progressForm, quantityThisPeriod: e.target.value })}
+                    />
+                  </FormField>
+                  <FormField label="Not" hint="Opsiyonel">
+                    <input
+                      className={formInputClass}
+                      placeholder="Açıklama"
+                      value={progressForm.notes}
+                      onChange={(e) => setProgressForm({ ...progressForm, notes: e.target.value })}
+                    />
+                  </FormField>
                 </div>
                 <button type="button" disabled={saving} onClick={() => void handleSaveProgress()} className="mt-4 inline-flex items-center gap-1 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
                   {saving ? <Loader2 className="animate-spin" size={14} /> : <Plus size={14} />}

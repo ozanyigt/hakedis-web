@@ -8,7 +8,7 @@ interface HeaderProps {
 
 export function Header({ onMenuClick }: HeaderProps) {
   const { email, logout } = useAuth();
-  const { tenants, tenantId, tenantName, setTenantId, isLoading } = useTenant();
+  const { tenants, tenantId, tenantName, setTenantId, isLoading, canSwitchTenant } = useTenant();
 
   return (
     <header className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 shadow-sm">
@@ -28,19 +28,21 @@ export function Header({ onMenuClick }: HeaderProps) {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <select
-          className="min-w-48 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
-          value={tenantId ?? ''}
-          disabled={isLoading || tenants.length === 0}
-          onChange={(event) => setTenantId(event.target.value)}
-        >
-          {tenants.length === 0 ? <option value="">Kurum bulunamadı</option> : null}
-          {tenants.map((tenant) => (
-            <option key={tenant.id} value={tenant.id}>
-              {tenant.name}
-            </option>
-          ))}
-        </select>
+        {canSwitchTenant ? (
+          <select
+            className="min-w-48 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+            value={tenantId ?? ''}
+            disabled={isLoading || tenants.length === 0}
+            onChange={(event) => setTenantId(event.target.value)}
+          >
+            {tenants.length === 0 ? <option value="">Kurum bulunamadı</option> : null}
+            {tenants.map((tenant) => (
+              <option key={tenant.id} value={tenant.id}>
+                {tenant.name}
+              </option>
+            ))}
+          </select>
+        ) : null}
 
         <div className="hidden text-right sm:block">
           <p className="text-xs text-slate-500">Kullanıcı</p>

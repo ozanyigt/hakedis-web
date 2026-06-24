@@ -8,7 +8,11 @@ import {
   type ReactNode,
 } from 'react';
 import { login as loginRequest, register as registerRequest } from '@/api/auth';
+import { registerUnauthorizedHandler } from '@/api/authSession';
+import { getUserFromAuth } from '@/api/users';
+import { canManageUsers, hasClaim, isGlobalAdmin } from '@/config/permissions';
 import { STORAGE_KEYS } from '@/types';
+import type { AppUser } from '@/types';
 import {
   getEmailFromToken,
   getRolesFromToken,
@@ -21,11 +25,15 @@ interface AuthContextValue {
   userId: string | null;
   email: string | null;
   roles: string[];
+  profile: AppUser | null;
   isAuthenticated: boolean;
   isAdmin: boolean;
+  canManageUsers: boolean;
+  hasClaim: (claim: string) => boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string) => Promise<void>;
   logout: () => void;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -34,10 +42,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(() =>
     localStorage.getItem(STORAGE_KEYS.accessToken),
   );
+  const [profile, setProfile] = useState<AppUser | null>(null);
+
+  useEffect(() => {
+    registerUnauthorizedHandler(() => {
+      setToken(null);
+      setProfile(null);
+    });
+  }, []);
 
   useEffect(() => {
     if (token && isTokenExpired(token)) {
       setToken(null);
+      setProfile(null);
       localStorage.removeItem(STORAGE_KEYS.accessToken);
     }
   }, [token]);
@@ -45,7 +62,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const roles = useMemo(() => (token ? getRolesFromToken(token) : []), [token]);
   const userId = useMemo(() => (token ? getUserIdFromToken(token) : null), [token]);
   const email = useMemo(() => (token ? getEmailFromToken(token) : null), [token]);
-  const isAdmin = roles.some((role) => role.toLowerCase() === 'admin');
+  const isAdmin = isGlobalAdmin(roles);
+
+  const refreshProfile = useCallback(async () => {
+    if (!token) {
+      setProfile(null);
+      return;
+    }
+
+    try {
+      const user = await getUserFromAuth();
+      setProfile(user);
+      if (user.tenantId) {
+        localStorage.setItem(STORAGE_KEYS.tenantId, user.tenantId);
+      }
+    } catch {
+      setProfile(null);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    void refreshProfile();
+  }, [refreshProfile]);
 
   const login = useCallback(async (emailValue: string, password: string) => {
     const response = await loginRequest({ email: emailValue, password });
@@ -66,7 +104,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     localStorage.removeItem(STORAGE_KEYS.accessToken);
     setToken(null);
+    setProfile(null);
   }, []);
+
+  const checkClaim = useCallback((claim: string) => hasClaim(roles, claim), [roles]);
 
   const value = useMemo(
     () => ({
@@ -74,13 +115,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       userId,
       email,
       roles,
+      profile,
       isAuthenticated: Boolean(token),
       isAdmin,
+      canManageUsers: canManageUsers(roles),
+      hasClaim: checkClaim,
       login,
       register,
       logout,
+      refreshProfile,
     }),
-    [token, userId, email, roles, isAdmin, login, register, logout],
+    [
+      token,
+      userId,
+      email,
+      roles,
+      profile,
+      isAdmin,
+      checkClaim,
+      login,
+      register,
+      logout,
+      refreshProfile,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

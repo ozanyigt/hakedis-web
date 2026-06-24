@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { FeatureGate, ProtectedRoute } from '@/components/auth/RouteGuards';
+import { DialogProvider } from '@/contexts/DialogContext';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { TenantProvider } from '@/contexts/TenantContext';
 import { LoginPage } from '@/features/auth/LoginPage';
@@ -11,11 +12,13 @@ import { MetrajPage } from '@/features/metraj/MetrajPage';
 import { ProjectsPage } from '@/features/projects/ProjectsPage';
 import { PuantajPage } from '@/features/puantaj/PuantajPage';
 import { TenantsPage } from '@/features/tenants/TenantsPage';
+import { UsersPage } from '@/features/users/UsersPage';
 
 export default function App() {
   return (
-    <AuthProvider>
-      <TenantProvider>
+    <DialogProvider>
+      <AuthProvider>
+        <TenantProvider>
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
@@ -32,7 +35,22 @@ export default function App() {
                     </FeatureGate>
                   }
                 />
-                <Route path="projects" element={<ProjectsPage />} />
+                <Route
+                  path="projects"
+                  element={
+                    <FeatureGate anyClaim={['Projects.Admin', 'Sites.Admin']}>
+                      <ProjectsPage />
+                    </FeatureGate>
+                  }
+                />
+                <Route
+                  path="users"
+                  element={
+                    <FeatureGate claim="Users.Read">
+                      <UsersPage />
+                    </FeatureGate>
+                  }
+                />
                 <Route
                   path="metraj"
                   element={
@@ -65,5 +83,6 @@ export default function App() {
         </BrowserRouter>
       </TenantProvider>
     </AuthProvider>
+    </DialogProvider>
   );
 }

@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { MENU_ITEMS } from '@/config/menu';
+import { hasAnyClaim, hasClaim } from '@/config/permissions';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTenant } from '@/contexts/TenantContext';
 import { X } from 'lucide-react';
@@ -10,8 +11,8 @@ interface SidebarProps {
 }
 
 export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
-  const { isAdmin } = useAuth();
-  const { hasModule } = useTenant();
+  const { isAdmin, roles } = useAuth();
+  const { hasModule, isReady } = useTenant();
 
   const visibleItems = MENU_ITEMS.filter((item) => {
     if (item.always) {
@@ -20,7 +21,16 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
     if (item.adminOnly) {
       return isAdmin;
     }
+    if (item.anyClaim && !hasAnyClaim(roles, item.anyClaim)) {
+      return false;
+    }
+    if (item.claim && !hasClaim(roles, item.claim)) {
+      return false;
+    }
     if (item.module) {
+      if (!isReady) {
+        return false;
+      }
       return hasModule(item.module);
     }
     return true;
