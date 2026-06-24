@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
 import { FileUp, Loader2, Trash2 } from 'lucide-react';
 import { deleteDrawing, getDrawingsByProject, uploadDrawing } from '@/api/drawings';
+import { exportMetrajExcel } from '@/api/exports';
 import { calculateMetraj, getMetrajResultsByProject } from '@/api/metraj';
 import { getProjectsByTenant } from '@/api/projects';
 import { getApiErrorMessage } from '@/api/client';
+import { ExportExcelButton } from '@/components/ExportExcelButton';
+import { useDialog } from '@/contexts/DialogContext';
 import { useTenant } from '@/contexts/TenantContext';
+import { ProjectLayerMappingPanel } from '@/features/metraj/ProjectLayerMappingPanel';
 import type { Drawing, MetrajResult, Project } from '@/types';
-import { DRAWING_STATUS_LABELS, METRAJ_KALEM_LABELS } from '@/types';
+import { DRAWING_STATUS_LABELS, MEASUREMENT_UNIT_LABELS, METRAJ_KALEM_LABELS } from '@/types';
 
 const ACCEPTED_EXTENSIONS = ['.dwg', '.dxf'];
 
@@ -22,6 +26,7 @@ function formatBytes(bytes: number): string {
 
 export function MetrajPage() {
   const { tenantId } = useTenant();
+  const { confirm } = useDialog();
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState('');
   const [drawings, setDrawings] = useState<Drawing[]>([]);
@@ -33,6 +38,7 @@ export function MetrajPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const loadProjectData = useCallback(async (activeProjectId: string) => {
     const guidPattern =
@@ -151,9 +157,12 @@ export function MetrajPage() {
   }
 
   async function handleDelete(drawing: Drawing) {
-    const confirmed = window.confirm(
-      `"${drawing.fileName}" çizimini silmek istediğinize emin misiniz? İlişkili metraj sonuçları da kaldırılır.`,
-    );
+    const confirmed = await confirm({
+      title: 'Çizimi sil',
+      message: `"${drawing.fileName}" çizimini silmek istediğinize emin misiniz? İlişkili metraj sonuçları da kaldırılır.`,
+      variant: 'danger',
+      confirmLabel: 'Sil',
+    });
     if (!confirmed) return;
 
     setDeletingId(drawing.id);
@@ -182,6 +191,23 @@ export function MetrajPage() {
       setError(getApiErrorMessage(calcError));
     } finally {
       setCalculatingId(null);
+    }
+  }
+
+  async function handleExportExcel() {
+    if (!tenantId || !projectId) return;
+    const guidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!guidPattern.test(projectId)) return;
+
+    setExporting(true);
+    setError(null);
+    try {
+      await exportMetrajExcel(tenantId, projectId);
+      setMessage('Metraj sonuçları Excel olarak indirildi.');
+    } catch (exportError) {
+      setError(getApiErrorMessage(exportError));
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -252,16 +278,18 @@ export function MetrajPage() {
           <h3 className="font-semibold text-slate-900">Metraj Akışı</h3>
           <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-slate-600">
             <li>Proje seçin</li>
-            <li>DWG/DXF yükleyin</li>
-            <li>Backend parse işlemini çalıştırır</li>
-            <li>Metraj sonuçları tabloda listelenir</li>
+            <li>DXF yükleyin ve katman eşlemesini yapın</li>
+            <li>Metraj hesaplayın</li>
+            <li>Sonuçlar tabloda listelenir</li>
           </ol>
           <p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            DXF yüklendikten sonra metraj ayrı istekle hesaplanır. DWG yalnızca kaydedilir; metraj için DXF
-            export veya &quot;Metraj Hesapla&quot; (DXF) kullanın.
+            Önce katman eşlemesini kaydedin (ör. Şap Beton → _Döşeme). DXF yüklendikten sonra &quot;Metraj
+            Hesapla&quot; proje kurallarını kullanır.
           </p>
         </aside>
       </section>
+
+      {projectId ? <ProjectLayerMappingPanel projectId={projectId} drawings={drawings} /> : null}
 
       {message ? (
         <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</p>
@@ -337,7 +365,14 @@ export function MetrajPage() {
       </section>
 
       <section className="space-y-3">
-        <h3 className="text-lg font-semibold text-slate-900">Metraj Sonuçları</h3>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h3 className="text-lg font-semibold text-slate-900">Metraj Sonuçları</h3>
+          <ExportExcelButton
+            disabled={!projectId || results.length === 0}
+            loading={exporting}
+            onClick={() => void handleExportExcel()}
+          />
+        </div>
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
           <table className="min-w-full text-left text-sm">
             <thead className="border-b border-slate-200 bg-slate-50 text-slate-600">
@@ -364,7 +399,7 @@ export function MetrajPage() {
                     {METRAJ_KALEM_LABELS[result.kalemType] ?? result.kalemType}
                   </td>
                   <td className="px-4 py-3 text-slate-700">{result.quantity}</td>
-                  <td className="px-4 py-3 text-slate-600">{result.unit}</td>
+                  <td className="px-4 py-3 text-slate-600">{MEASUREMENT_UNIT_LABELS[result.unit] ?? result.unit}</td>
                   <td className="px-4 py-3 text-slate-600">{result.floorName ?? '-'}</td>
                   <td className="px-4 py-3 text-slate-600">{result.spaceName ?? '-'}</td>
                   <td className="px-4 py-3 text-slate-600">

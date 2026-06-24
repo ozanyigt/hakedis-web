@@ -6,11 +6,17 @@ import {
   getProjectsByTenant,
   updateProject,
 } from '@/api/projects';
+import { exportProjectsExcel } from '@/api/exports';
 import { getApiErrorMessage } from '@/api/client';
+import { ExportExcelButton } from '@/components/ExportExcelButton';
+import { FormField, formInputClass } from '@/components/FormField';
+import { useDialog } from '@/contexts/DialogContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTenant } from '@/contexts/TenantContext';
+import { canManageProjects, hasClaim } from '@/config/permissions';
 import type { Project } from '@/types';
 import { PROJECT_STATUS_LABELS } from '@/types';
+import { ProjectSitesPanel } from '@/features/sites/ProjectSitesPanel';
 
 const EMPTY_FORM = {
   name: '',
@@ -29,8 +35,11 @@ function formatMoney(value: number) {
 }
 
 export function ProjectsPage() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, roles } = useAuth();
+  const { confirm } = useDialog();
   const { tenantId, tenantName, tenants, setTenantId } = useTenant();
+  const manageProjects = canManageProjects(roles);
+  const manageSites = hasClaim(roles, 'Sites.Read');
   const [projects, setProjects] = useState<Project[]>([]);
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -38,6 +47,8 @@ export function ProjectsPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sitesProjectId, setSitesProjectId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const loadProjects = useCallback(async () => {
     if (!tenantId) {
@@ -108,7 +119,12 @@ export function ProjectsPage() {
   }
 
   async function handleDelete(project: Project) {
-    const confirmed = window.confirm(`"${project.name}" projesini silmek istediğinize emin misiniz?`);
+    const confirmed = await confirm({
+      title: 'Projeyi sil',
+      message: `"${project.name}" projesini silmek istediğinize emin misiniz?`,
+      variant: 'danger',
+      confirmLabel: 'Sil',
+    });
     if (!confirmed) return;
 
     setSaving(true);
@@ -143,13 +159,38 @@ export function ProjectsPage() {
     setMessage(null);
   }
 
+  async function handleExportExcel() {
+    if (!tenantId) return;
+    setExporting(true);
+    setError(null);
+    try {
+      await exportProjectsExcel(tenantId);
+      setMessage('Proje listesi Excel olarak indirildi.');
+    } catch (exportError) {
+      setError(getApiErrorMessage(exportError));
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
-      <section>
-        <h2 className="text-2xl font-bold text-slate-900">Projeler</h2>
-        <p className="mt-1 text-sm text-slate-600">
-          Kurumunuza bağlı inşaat projelerini oluşturun ve yönetin.
-        </p>
+      <section className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900">Projeler</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            {manageProjects
+              ? 'Kurumunuza bağlı inşaat projelerini oluşturun ve yönetin.'
+              : 'Projeleri görüntüleyin ve şantiye kayıtlarını yönetin.'}
+          </p>
+        </div>
+        {tenantId && manageProjects ? (
+          <ExportExcelButton
+            disabled={projects.length === 0}
+            loading={exporting}
+            onClick={() => void handleExportExcel()}
+          />
+        ) : null}
       </section>
 
       {isAdmin && tenants.length > 1 ? (
@@ -180,71 +221,90 @@ export function ProjectsPage() {
         </p>
       ) : (
         <>
+          {manageProjects ? (
           <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <h3 className="font-semibold text-slate-900">
               {editingId ? 'Projeyi Düzenle' : 'Yeni Proje Oluştur'}
             </h3>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <input
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                placeholder="Proje adı *"
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-              />
-              <input
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                placeholder="Proje kodu"
-                value={form.code}
-                onChange={(e) => setForm({ ...form, code: e.target.value })}
-              />
-              <input
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                placeholder="İşveren / müşteri"
-                value={form.clientName}
-                onChange={(e) => setForm({ ...form, clientName: e.target.value })}
-              />
-              <input
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                placeholder="Konum / şehir"
-                value={form.location}
-                onChange={(e) => setForm({ ...form, location: e.target.value })}
-              />
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                placeholder="Sözleşme bedeli (₺)"
-                value={form.contractAmount}
-                onChange={(e) => setForm({ ...form, contractAmount: e.target.value })}
-              />
-              <select
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                value={form.status}
-                onChange={(e) => setForm({ ...form, status: e.target.value })}
-              >
-                {Object.entries(PROJECT_STATUS_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
-              <input
-                type="date"
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                value={form.startDate}
-                onChange={(e) => setForm({ ...form, startDate: e.target.value })}
-              />
-              <input
-                type="date"
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                value={form.endDate}
-                onChange={(e) => setForm({ ...form, endDate: e.target.value })}
-              />
-              <input
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm sm:col-span-2 lg:col-span-3"
-                placeholder="Açıklama"
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-              />
+            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <FormField label="Proje adı" required>
+                <input
+                  className={formInputClass}
+                  placeholder="Örn. Merkez Konut"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                />
+              </FormField>
+              <FormField label="Proje kodu" hint="Opsiyonel">
+                <input
+                  className={formInputClass}
+                  placeholder="Örn. MK-2026"
+                  value={form.code}
+                  onChange={(e) => setForm({ ...form, code: e.target.value })}
+                />
+              </FormField>
+              <FormField label="İşveren / müşteri" hint="Opsiyonel">
+                <input
+                  className={formInputClass}
+                  placeholder="Firma adı"
+                  value={form.clientName}
+                  onChange={(e) => setForm({ ...form, clientName: e.target.value })}
+                />
+              </FormField>
+              <FormField label="Konum / şehir" hint="Opsiyonel">
+                <input
+                  className={formInputClass}
+                  placeholder="Örn. İstanbul"
+                  value={form.location}
+                  onChange={(e) => setForm({ ...form, location: e.target.value })}
+                />
+              </FormField>
+              <FormField label="Sözleşme bedeli (₺)" hint="Opsiyonel">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className={formInputClass}
+                  placeholder="0,00"
+                  value={form.contractAmount}
+                  onChange={(e) => setForm({ ...form, contractAmount: e.target.value })}
+                />
+              </FormField>
+              <FormField label="Durum" required>
+                <select
+                  className={formInputClass}
+                  value={form.status}
+                  onChange={(e) => setForm({ ...form, status: e.target.value })}
+                >
+                  {Object.entries(PROJECT_STATUS_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              </FormField>
+              <FormField label="Başlangıç tarihi" hint="Opsiyonel">
+                <input
+                  type="date"
+                  className={formInputClass}
+                  value={form.startDate}
+                  onChange={(e) => setForm({ ...form, startDate: e.target.value })}
+                />
+              </FormField>
+              <FormField label="Bitiş tarihi" hint="Opsiyonel">
+                <input
+                  type="date"
+                  className={formInputClass}
+                  value={form.endDate}
+                  onChange={(e) => setForm({ ...form, endDate: e.target.value })}
+                />
+              </FormField>
+              <FormField label="Açıklama" className="sm:col-span-2 lg:col-span-3" hint="Opsiyonel">
+                <input
+                  className={formInputClass}
+                  placeholder="Proje notu"
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                />
+              </FormField>
             </div>
             <div className="mt-4 flex gap-2">
               <button
@@ -267,6 +327,7 @@ export function ProjectsPage() {
               ) : null}
             </div>
           </section>
+          ) : null}
 
           {message ? (
             <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</p>
@@ -294,7 +355,9 @@ export function ProjectsPage() {
                 {!loading && projects.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
-                      Henüz proje yok. Yukarıdan yeni proje oluşturun.
+                      {manageProjects
+                        ? 'Henüz proje yok. Yukarıdan yeni proje oluşturun.'
+                        : 'Henüz proje bulunmuyor.'}
                     </td>
                   </tr>
                 ) : null}
@@ -316,6 +379,19 @@ export function ProjectsPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
+                        {manageSites ? (
+                        <button
+                          type="button"
+                          className="rounded border border-brand-300 px-2 py-1 text-xs text-brand-700"
+                          onClick={() => setSitesProjectId(
+                            sitesProjectId === project.id ? null : project.id,
+                          )}
+                        >
+                          Şantiyeler
+                        </button>
+                        ) : null}
+                        {manageProjects ? (
+                        <>
                         <button
                           type="button"
                           className="rounded border border-slate-300 px-2 py-1 text-xs"
@@ -332,6 +408,8 @@ export function ProjectsPage() {
                           <Trash2 size={12} />
                           Sil
                         </button>
+                        </>
+                        ) : null}
                       </div>
                     </td>
                   </tr>
@@ -339,6 +417,15 @@ export function ProjectsPage() {
               </tbody>
             </table>
           </section>
+
+          {sitesProjectId && tenantId ? (
+            <ProjectSitesPanel
+              tenantId={tenantId}
+              projectId={sitesProjectId}
+              projectName={projects.find((p) => p.id === sitesProjectId)?.name}
+              onClose={() => setSitesProjectId(null)}
+            />
+          ) : null}
         </>
       )}
     </div>

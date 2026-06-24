@@ -10,3 +10,34 @@ export async function getSitesByProject(projectId: string): Promise<Site[]> {
   );
   return data.items ?? [];
 }
+
+export async function createSite(payload: {
+  tenantId: string;
+  projectId: string;
+  name: string;
+  code?: string | null;
+  location?: string | null;
+  status: number;
+  description?: string | null;
+}): Promise<Site> {
+  const { data } = await apiClient.post<Site>('/Sites', payload);
+  return data;
+}
+
+export async function updateSite(payload: {
+  id: string;
+  tenantId: string;
+  projectId: string;
+  name: string;
+  code?: string | null;
+  location?: string | null;
+  status: number;
+  description?: string | null;
+}): Promise<Site> {
+  const { data } = await apiClient.put<Site>('/Sites', payload);
+  return data;
+}
+
+export async function deleteSite(id: string): Promise<void> {
+  await apiClient.delete(`/Sites/${id}`);
+}

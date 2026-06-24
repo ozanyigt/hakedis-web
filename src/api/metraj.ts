@@ -10,7 +10,7 @@ interface CalculateMetrajApiResponse {
   results?: Array<{
     id: string;
     kalemType: number;
-    unit: string;
+    unit: number;
     quantity: number;
   }>;
 }
