@@ -68,6 +68,13 @@ export interface Tenant {
   isActive: boolean;
 }
 
+export interface TenantDetail extends Tenant {
+  taxOffice?: string | null;
+  address?: string | null;
+  phone?: string | null;
+  email?: string | null;
+}
+
 export interface AppContext {
   isGlobalAdmin: boolean;
   firmRole?: FirmRoleValue | null;
@@ -97,15 +104,27 @@ export interface Subscription {
   id: string;
   tenantId: string;
   subscriptionPlanId: string;
+  billingCycle: number;
   status: number;
   startDate: string;
   endDate?: string | null;
+  isManualAssignment?: boolean;
+  notes?: string | null;
 }
 
 export interface SubscriptionPlan {
   id: string;
   name: string;
   enabledModules: string;
+}
+
+export interface SubscriptionPlanDetail extends SubscriptionPlan {
+  code: string;
+  description?: string | null;
+  monthlyPrice: number;
+  yearlyPrice: number;
+  maxSiteCount: number;
+  isActive: boolean;
 }
 
 export interface Drawing {

@@ -14,6 +14,20 @@ export function ProtectedRoute() {
   return <Outlet />;
 }
 
+export function PlatformRoute() {
+  const { isAuthenticated, isAdmin } = useAuth();
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (!isAdmin) {
+    return <Navigate to="/app" replace />;
+  }
+
+  return <Outlet />;
+}
+
 interface FeatureGateProps {
   module?: FeatureModuleName;
   adminOnly?: boolean;
@@ -31,15 +45,15 @@ export function FeatureGate({ module, adminOnly, claim, anyClaim, children }: Fe
   }
 
   if (adminOnly && !isAdmin) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/app" replace />;
   }
 
   if (anyClaim && !hasAnyClaim(roles, anyClaim)) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/app" replace />;
   }
 
   if (claim && !hasClaim(roles, claim)) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/app" replace />;
   }
 
   if (module) {
@@ -48,7 +62,7 @@ export function FeatureGate({ module, adminOnly, claim, anyClaim, children }: Fe
     }
 
     if (!hasModule(module)) {
-      return <Navigate to="/" replace />;
+      return <Navigate to="/app" replace />;
     }
   }
 
