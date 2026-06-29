@@ -1,9 +1,10 @@
 import { NavLink } from 'react-router-dom';
+import { ExternalLink, X } from 'lucide-react';
 import { MENU_ITEMS } from '@/config/menu';
+import { BrandLogo } from '@/components/brand/BrandLogo';
 import { hasAnyClaim, hasClaim } from '@/config/permissions';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTenant } from '@/contexts/TenantContext';
-import { X } from 'lucide-react';
 
 interface SidebarProps {
   mobileOpen: boolean;
@@ -39,9 +40,12 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
   const content = (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b border-slate-700 px-5 py-4">
-        <div>
-          <p className="text-xs uppercase tracking-widest text-slate-400">Hakediş</p>
-          <h1 className="text-lg font-semibold text-white">İnşaat SaaS</h1>
+        <div className="flex items-center gap-3">
+          <BrandLogo size="sm" />
+          <div>
+            <p className="text-xs uppercase tracking-widest text-slate-400">SahaMetrik</p>
+            <h1 className="text-sm font-semibold text-white">İnşaat SaaS</h1>
+          </div>
         </div>
         <button
           type="button"
@@ -69,7 +73,7 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
                     : 'text-slate-300 hover:bg-slate-800 hover:text-white',
                 ].join(' ')
               }
-              end={item.path === '/'}
+              end={item.path === '/app'}
             >
               <Icon size={18} />
               {item.label}
@@ -77,6 +81,19 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
           );
         })}
       </nav>
+
+      {isAdmin ? (
+        <div className="border-t border-slate-700 p-3">
+          <NavLink
+            to="/platform"
+            onClick={onClose}
+            className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm text-amber-300 hover:bg-slate-800 hover:text-amber-200"
+          >
+            <ExternalLink size={16} />
+            Platform paneli
+          </NavLink>
+        </div>
+      ) : null}
     </div>
   );
 

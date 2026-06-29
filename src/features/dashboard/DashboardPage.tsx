@@ -61,7 +61,7 @@ export function DashboardPage() {
               Proje çizimlerini yükleyip metraj hesaplamasını başlatın.
             </p>
             <Link
-              to="/metraj"
+              to="/app/metraj"
               className="mt-4 inline-flex rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700"
             >
               Metraj ekranına git
@@ -74,7 +74,7 @@ export function DashboardPage() {
             <h3 className="font-semibold text-slate-900">Projeler</h3>
             <p className="mt-2 text-sm text-slate-600">Şantiye ve proje kayıtlarını yönetin.</p>
             <Link
-              to="/projects"
+              to="/app/projects"
               className="mt-4 inline-flex rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
             >
               Projeleri görüntüle

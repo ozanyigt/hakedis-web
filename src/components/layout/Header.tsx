@@ -1,4 +1,5 @@
 import { LogOut, Menu } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTenant } from '@/contexts/TenantContext';
 
@@ -7,6 +8,7 @@ interface HeaderProps {
 }
 
 export function Header({ onMenuClick }: HeaderProps) {
+  const navigate = useNavigate();
   const { email, logout } = useAuth();
   const { tenants, tenantId, tenantName, setTenantId, isLoading, canSwitchTenant } = useTenant();
 
@@ -51,7 +53,10 @@ export function Header({ onMenuClick }: HeaderProps) {
 
         <button
           type="button"
-          onClick={logout}
+          onClick={() => {
+            logout();
+            navigate('/');
+          }}
           className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
         >
           <LogOut size={16} />
