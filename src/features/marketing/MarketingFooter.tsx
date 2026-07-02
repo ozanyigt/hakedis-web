@@ -6,7 +6,7 @@ export function MarketingFooter() {
     <footer className="border-t border-white/10 bg-slate-950">
       <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-10 sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <div className="flex items-start gap-4">
-          <BrandLogo size="md" />
+          <BrandLogo size="lg" />
           <div>
             <p className="text-lg font-semibold text-white">SahaMetrik</p>
             <p className="mt-1 max-w-md text-sm text-slate-400">

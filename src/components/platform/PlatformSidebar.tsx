@@ -13,7 +13,7 @@ export function PlatformSidebar({ mobileOpen, onClose }: PlatformSidebarProps) {
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b border-slate-700 px-5 py-4">
         <div>
-          <BrandLogo size="sm" />
+          <BrandLogo size="md" />
           <p className="mt-2 text-xs font-semibold uppercase tracking-widest text-amber-400">
             Platform
           </p>

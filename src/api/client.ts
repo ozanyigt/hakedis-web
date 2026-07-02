@@ -3,7 +3,9 @@ import { notifyUnauthorized } from '@/api/authSession';
 import { ApiError, extractApiErrorMessage } from '@/utils/apiError';
 import { STORAGE_KEYS } from '@/types';
 
-const baseURL = import.meta.env.VITE_API_BASE_URL ?? '/api';
+// Gecici: canli backend (Vercel env yerine)
+const BASE_URL = 'http://185.22.186.198:8080';
+const baseURL = `${BASE_URL}/api`;
 
 export const apiClient = axios.create({
   baseURL,
