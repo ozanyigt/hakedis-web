@@ -41,7 +41,7 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b border-slate-700 px-5 py-4">
         <div className="flex items-center gap-3">
-          <BrandLogo size="sm" />
+          <BrandLogo size="md" />
           <div>
             <p className="text-xs uppercase tracking-widest text-slate-400">SahaMetrik</p>
             <h1 className="text-sm font-semibold text-white">İnşaat SaaS</h1>

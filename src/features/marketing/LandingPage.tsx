@@ -95,7 +95,7 @@ export function LandingPage() {
           <div className="pointer-events-none absolute -left-24 bottom-0 h-72 w-72 rounded-full bg-brand-500/10 blur-3xl" />
 
           <div className="relative mx-auto max-w-6xl px-4 pb-20 pt-16 sm:px-6 sm:pt-24">
-            <BrandLogo size="hero" className="mb-8" />
+            <BrandLogo variant="hero" className="mb-8" />
 
             <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-slate-300 backdrop-blur">
               <Sparkles size={14} className="text-cyan-300" />
