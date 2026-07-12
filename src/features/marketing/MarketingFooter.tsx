@@ -10,7 +10,8 @@ export function MarketingFooter() {
           <div>
             <p className="text-lg font-semibold text-white">SahaMetrik</p>
             <p className="mt-1 max-w-md text-sm text-slate-400">
-              İnşaat sahaları için metraj, puantaj ve hakediş süreçlerini tek platformda yönetin.
+              İnşaat sahaları için metraj, puantaj ve hakediş süreçlerini tek platformda yönetin. Metrajda
+              yapay zeka destekli hüküm önerileriyle daha hızlı ve kontrollü ilerleyin.
             </p>
           </div>
         </div>
