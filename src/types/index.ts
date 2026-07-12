@@ -39,7 +39,7 @@ export interface UpdateUserPayload {
   secondaryFirmRole?: FirmRoleValue | null;
 }
 
-export type DrawingStatus = 'Uploaded' | 'Parsing' | 'Parsed' | 'Failed';
+export type DrawingStatus = 'Uploaded' | 'Parsing' | 'Parsed' | 'Failed' | 'PendingReview' | 'Approved';
 
 export interface AccessToken {
   token: string;
@@ -148,10 +148,28 @@ export interface MetrajResult {
   kalemType: number;
   unit: number;
   quantity: number;
+  grossQuantity?: number;
+  suggestedQuantity?: number | null;
+  approvalStatus?: number;
+  judgmentDecision?: number | null;
+  judgmentReason?: string | null;
+  policyRef?: string | null;
+  aiConfidence?: number | null;
+  isLocked?: boolean;
   floorName?: string | null;
   spaceName?: string | null;
   calculatedAt: string;
   notes?: string | null;
+}
+
+export interface MetrajPolicy {
+  id: string;
+  tenantId: string;
+  code: string;
+  title: string;
+  body: string;
+  version: number;
+  isActive: boolean;
 }
 
 export interface Worker {
@@ -263,6 +281,21 @@ export const DRAWING_STATUS_LABELS: Record<number, string> = {
   2: 'İşleniyor',
   3: 'Hazır',
   4: 'Hata',
+  5: 'İnceleme bekliyor',
+  6: 'Onaylandı',
+};
+
+export const METRAJ_APPROVAL_STATUS_LABELS: Record<number, string> = {
+  1: 'Bekliyor',
+  2: 'Yapay zeka önerisi',
+  3: 'Onaylandı',
+  4: 'Reddedildi',
+};
+
+export const METRAJ_JUDGMENT_LABELS: Record<number, string> = {
+  1: 'Say',
+  2: 'Sayma',
+  3: 'İncele',
 };
 
 export const METRAJ_KALEM_LABELS: Record<number, string> = {

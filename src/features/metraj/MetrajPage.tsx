@@ -1,16 +1,23 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FileUp, Loader2, Trash2 } from 'lucide-react';
 import { deleteDrawing, getDrawingsByProject, uploadDrawing } from '@/api/drawings';
 import { exportMetrajExcel } from '@/api/exports';
-import { calculateMetraj, getMetrajResultsByProject } from '@/api/metraj';
+import { approveMetrajResults, calculateMetraj, getMetrajResultsByProject } from '@/api/metraj';
 import { getProjectsByTenant } from '@/api/projects';
 import { getApiErrorMessage } from '@/api/client';
 import { ExportExcelButton } from '@/components/ExportExcelButton';
 import { useDialog } from '@/contexts/DialogContext';
 import { useTenant } from '@/contexts/TenantContext';
+import { MetrajPolicyPanel } from '@/features/metraj/MetrajPolicyPanel';
 import { ProjectLayerMappingPanel } from '@/features/metraj/ProjectLayerMappingPanel';
 import type { Drawing, MetrajResult, Project } from '@/types';
-import { DRAWING_STATUS_LABELS, MEASUREMENT_UNIT_LABELS, METRAJ_KALEM_LABELS } from '@/types';
+import {
+  DRAWING_STATUS_LABELS,
+  MEASUREMENT_UNIT_LABELS,
+  METRAJ_APPROVAL_STATUS_LABELS,
+  METRAJ_JUDGMENT_LABELS,
+  METRAJ_KALEM_LABELS,
+} from '@/types';
 
 const ACCEPTED_EXTENSIONS = ['.dwg', '.dxf'];
 
@@ -22,6 +29,12 @@ function formatBytes(bytes: number): string {
     return `${(bytes / 1024).toFixed(1)} KB`;
   }
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function judgmentTone(decision?: number | null): string {
+  if (decision === 1) return 'bg-emerald-50 text-emerald-800';
+  if (decision === 2) return 'bg-amber-50 text-amber-900';
+  return 'bg-slate-100 text-slate-700';
 }
 
 export function MetrajPage() {
@@ -36,9 +49,16 @@ export function MetrajPage() {
   const [uploading, setUploading] = useState(false);
   const [calculatingId, setCalculatingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [quantityEdits, setQuantityEdits] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+
+  const pendingReviewDrawings = useMemo(
+    () => drawings.filter((drawing) => drawing.status === 5),
+    [drawings],
+  );
 
   const loadProjectData = useCallback(async (activeProjectId: string) => {
     const guidPattern =
@@ -59,6 +79,12 @@ export function MetrajPage() {
       ]);
       setDrawings(drawingItems);
       setResults(resultItems);
+      const edits: Record<string, string> = {};
+      for (const item of resultItems) {
+        const suggested = item.suggestedQuantity ?? item.grossQuantity ?? item.quantity;
+        edits[item.id] = String(suggested);
+      }
+      setQuantityEdits(edits);
     } catch (loadError) {
       setError(getApiErrorMessage(loadError));
     } finally {
@@ -184,13 +210,55 @@ export function MetrajPage() {
     setError(null);
     setMessage(null);
     try {
-      await calculateMetraj(drawingId);
-      setMessage('Metraj hesaplandı.');
+      const response = await calculateMetraj(drawingId);
+      const aiNote = response.usedAi
+        ? 'Yapay zeka hüküm önerileri üretildi.'
+        : response.judgmentNote || 'Yapay zeka yapılandırılmadı; kalemler incelemeye alındı.';
+      setMessage(`Brüt metraj hesaplandı. ${aiNote} Onayladıktan sonra hakedişe kilitlenir.`);
       await loadProjectData(projectId);
     } catch (calcError) {
       setError(getApiErrorMessage(calcError));
     } finally {
       setCalculatingId(null);
+    }
+  }
+
+  async function handleApprove(drawingId: string) {
+    const drawingResults = results.filter((result) => result.drawingId === drawingId && !result.isLocked);
+    if (drawingResults.length === 0) {
+      setError('Onaylanacak metraj kalemi yok.');
+      return;
+    }
+
+    const confirmed = await confirm({
+      title: 'Metrajı onayla ve kilitle',
+      message:
+        'Onaylanan miktarlar hakediş için kilitlenir. Yapay zeka önerisini düzenlediyseniz tablodaki değerler kullanılır.',
+      confirmLabel: 'Onayla',
+    });
+    if (!confirmed) return;
+
+    setApprovingId(drawingId);
+    setError(null);
+    setMessage(null);
+    try {
+      await approveMetrajResults(
+        drawingId,
+        drawingResults.map((result) => {
+          const edited = Number(quantityEdits[result.id] ?? result.suggestedQuantity ?? result.grossQuantity ?? 0);
+          return {
+            id: result.id,
+            approvedQuantity: Number.isFinite(edited) ? edited : result.suggestedQuantity ?? result.grossQuantity,
+            reject: false,
+          };
+        }),
+      );
+      setMessage('Metraj onaylandı ve kilitlendi.');
+      await loadProjectData(projectId);
+    } catch (approveError) {
+      setError(getApiErrorMessage(approveError));
+    } finally {
+      setApprovingId(null);
     }
   }
 
@@ -216,7 +284,7 @@ export function MetrajPage() {
       <section>
         <h2 className="text-2xl font-bold text-slate-900">Metraj</h2>
         <p className="mt-1 text-sm text-slate-600">
-          DWG/DXF dosyalarını yükleyin, çizim durumunu izleyin ve metraj sonuçlarını görüntüleyin.
+          DXF yükleyin → brüt metraj hesaplanır → yapay zeka hüküm önerir → siz onaylayıp kilitleyin.
         </p>
       </section>
 
@@ -277,17 +345,18 @@ export function MetrajPage() {
         <aside className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <h3 className="font-semibold text-slate-900">Metraj Akışı</h3>
           <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-slate-600">
-            <li>Proje seçin</li>
-            <li>DXF yükleyin ve katman eşlemesini yapın</li>
-            <li>Metraj hesaplayın</li>
-            <li>Sonuçlar tabloda listelenir</li>
+            <li>Firma politikasını kaydedin</li>
+            <li>Katman eşlemesini yapın</li>
+            <li>DXF yükleyip brüt metrajı hesaplatın</li>
+            <li>Yapay zeka önerisini kontrol edip onaylayın</li>
           </ol>
           <p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            Önce katman eşlemesini kaydedin (ör. Şap Beton → _Döşeme). DXF yüklendikten sonra &quot;Metraj
-            Hesapla&quot; proje kurallarını kullanır.
+            API key yoksa da hesaplama çalışır; tüm kalemler &quot;İncele&quot; durumuna düşer.
           </p>
         </aside>
       </section>
+
+      <MetrajPolicyPanel />
 
       {projectId ? <ProjectLayerMappingPanel projectId={projectId} drawings={drawings} /> : null}
 
@@ -305,7 +374,7 @@ export function MetrajPage() {
                 <th className="px-4 py-3 font-medium">Dosya</th>
                 <th className="px-4 py-3 font-medium">Boyut</th>
                 <th className="px-4 py-3 font-medium">Durum</th>
-                <th className="px-4 py-3 font-medium">Hata</th>
+                <th className="px-4 py-3 font-medium">Hata / Not</th>
                 <th className="px-4 py-3 font-medium">İşlem</th>
               </tr>
             </thead>
@@ -342,6 +411,16 @@ export function MetrajPage() {
                       >
                         {calculatingId === drawing.id ? 'Hesaplanıyor...' : 'Metraj Hesapla'}
                       </button>
+                      {drawing.status === 5 ? (
+                        <button
+                          type="button"
+                          disabled={approvingId === drawing.id}
+                          onClick={() => void handleApprove(drawing.id)}
+                          className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+                        >
+                          {approvingId === drawing.id ? 'Onaylanıyor...' : 'Onayla & Kilitle'}
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         disabled={deletingId === drawing.id || calculatingId === drawing.id}
@@ -364,6 +443,13 @@ export function MetrajPage() {
         </div>
       </section>
 
+      {pendingReviewDrawings.length > 0 ? (
+        <p className="rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
+          {pendingReviewDrawings.length} çizim inceleme bekliyor. Tabloda önerilen miktarı düzenleyip
+          &quot;Onayla &amp; Kilitle&quot; ile hakedişe alın.
+        </p>
+      ) : null}
+
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h3 className="text-lg font-semibold text-slate-900">Metraj Sonuçları</h3>
@@ -378,35 +464,74 @@ export function MetrajPage() {
             <thead className="border-b border-slate-200 bg-slate-50 text-slate-600">
               <tr>
                 <th className="px-4 py-3 font-medium">Kalem</th>
-                <th className="px-4 py-3 font-medium">Miktar</th>
+                <th className="px-4 py-3 font-medium">Brüt</th>
+                <th className="px-4 py-3 font-medium">Yapay zeka / Onay miktarı</th>
                 <th className="px-4 py-3 font-medium">Birim</th>
-                <th className="px-4 py-3 font-medium">Kat</th>
-                <th className="px-4 py-3 font-medium">Mahal</th>
+                <th className="px-4 py-3 font-medium">Hüküm</th>
+                <th className="px-4 py-3 font-medium">Durum</th>
+                <th className="px-4 py-3 font-medium">Gerekçe</th>
                 <th className="px-4 py-3 font-medium">Tarih</th>
               </tr>
             </thead>
             <tbody>
               {results.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={8} className="px-4 py-6 text-center text-slate-500">
                     Metraj sonucu henüz yok.
                   </td>
                 </tr>
               ) : null}
-              {results.map((result) => (
-                <tr key={result.id} className="border-b border-slate-100 last:border-0">
-                  <td className="px-4 py-3 font-medium text-slate-900">
-                    {METRAJ_KALEM_LABELS[result.kalemType] ?? result.kalemType}
-                  </td>
-                  <td className="px-4 py-3 text-slate-700">{result.quantity}</td>
-                  <td className="px-4 py-3 text-slate-600">{MEASUREMENT_UNIT_LABELS[result.unit] ?? result.unit}</td>
-                  <td className="px-4 py-3 text-slate-600">{result.floorName ?? '-'}</td>
-                  <td className="px-4 py-3 text-slate-600">{result.spaceName ?? '-'}</td>
-                  <td className="px-4 py-3 text-slate-600">
-                    {new Date(result.calculatedAt).toLocaleString('tr-TR')}
-                  </td>
-                </tr>
-              ))}
+              {results.map((result) => {
+                const locked = Boolean(result.isLocked) || result.approvalStatus === 3;
+                return (
+                  <tr key={result.id} className="border-b border-slate-100 last:border-0 align-top">
+                    <td className="px-4 py-3 font-medium text-slate-900">
+                      {METRAJ_KALEM_LABELS[result.kalemType] ?? result.kalemType}
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">
+                      {result.grossQuantity ?? result.quantity}
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">
+                      {locked ? (
+                        result.quantity
+                      ) : (
+                        <input
+                          className="w-28 rounded-md border border-slate-300 px-2 py-1"
+                          value={quantityEdits[result.id] ?? ''}
+                          onChange={(event) =>
+                            setQuantityEdits((prev) => ({ ...prev, [result.id]: event.target.value }))
+                          }
+                        />
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {MEASUREMENT_UNIT_LABELS[result.unit] ?? result.unit}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${judgmentTone(result.judgmentDecision)}`}
+                      >
+                        {result.judgmentDecision
+                          ? METRAJ_JUDGMENT_LABELS[result.judgmentDecision]
+                          : '-'}
+                        {result.policyRef ? ` · ${result.policyRef}` : ''}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {result.approvalStatus
+                        ? METRAJ_APPROVAL_STATUS_LABELS[result.approvalStatus]
+                        : '-'}
+                      {locked ? ' (kilitli)' : ''}
+                    </td>
+                    <td className="max-w-xs px-4 py-3 text-xs text-slate-600">
+                      {result.judgmentReason ?? result.notes ?? '-'}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {new Date(result.calculatedAt).toLocaleString('tr-TR')}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

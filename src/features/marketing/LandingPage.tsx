@@ -5,7 +5,6 @@ import {
   Calculator,
   ClipboardList,
   Layers,
-  LineChart,
   Receipt,
   Shield,
   Sparkles,
@@ -27,6 +26,12 @@ const FEATURES = [
     icon: Calculator,
     title: 'Otomatik Metraj',
     description: 'DWG/DXF dosyalarından duvar, sıva, boya, şap ve daha fazlasını hızlıca hesaplayın.',
+  },
+  {
+    icon: Sparkles,
+    title: 'Yapay Zeka Destekli Hüküm',
+    description:
+      'Firma metraj politikasına göre sayılacak / ihmal edilecek alanları yapay zeka önerir; nihai karar sizde kalır.',
   },
   {
     icon: ClipboardList,
@@ -55,7 +60,7 @@ const MODULES = [
     icon: Calculator,
     name: 'Metraj',
     color: 'from-blue-500/20 to-blue-600/5 border-blue-500/20',
-    items: ['DXF/DWG yükleme', 'Katman eşleme', 'Excel export'],
+    items: ['DXF/DWG yükleme', 'Katman eşleme', 'Yapay zeka hüküm önerisi', 'Excel export'],
   },
   {
     icon: ClipboardList,
@@ -74,7 +79,11 @@ const MODULES = [
 const STEPS = [
   { step: '01', title: 'Demo talep edin', text: 'Ekibimiz firmanız için uygun planı belirler ve hesabınızı açar.' },
   { step: '02', title: 'Projelerinizi tanımlayın', text: 'Şantiyeler, çizimler ve kullanıcı rolleri birkaç dakikada hazır.' },
-  { step: '03', title: 'Metrajdan hakedişe', text: 'DXF metraj, puantaj ve hakediş verileri tek panelde birleşir.' },
+  {
+    step: '03',
+    title: 'Metrajdan hakedişe',
+    text: 'DXF metraj, yapay zeka destekli inceleme, puantaj ve hakediş verileri tek panelde birleşir.',
+  },
 ] as const;
 
 export function LandingPage() {
@@ -99,7 +108,7 @@ export function LandingPage() {
 
             <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-slate-300 backdrop-blur">
               <Sparkles size={14} className="text-cyan-300" />
-              İnşaat sahaları için yeni nesil SaaS
+              Yapay zeka destekli metraj ve saha yönetimi
             </div>
 
             <h1 className="mt-6 max-w-3xl text-4xl font-bold leading-tight tracking-tight sm:text-5xl lg:text-6xl">
@@ -111,8 +120,9 @@ export function LandingPage() {
             </h1>
 
             <p className="mt-6 max-w-2xl text-lg leading-relaxed text-slate-400">
-              SahaMetrik; DXF metraj, puantaj ve hakediş süreçlerini tek platformda birleştirir. Kurumsal
-              firmalar için tasarlandı — hesabınız platform yöneticisi tarafından açılır.
+              SahaMetrik; DXF metraj, puantaj ve hakediş süreçlerini tek platformda birleştirir. Metrajda
+              yapay zekadan yararlanarak ihmal ve inceleme kararlarını hızlandırır — nihai onay her zaman
+              sizde kalır.
             </p>
 
             <div className="mt-10 flex flex-wrap gap-4">
@@ -134,7 +144,7 @@ export function LandingPage() {
             <div className="mt-16 grid gap-4 sm:grid-cols-3">
               {[
                 { icon: Building2, label: 'Çok kiracılı mimari' },
-                { icon: LineChart, label: 'Modüler abonelik planları' },
+                { icon: Sparkles, label: 'Yapay zeka destekli metraj' },
                 { icon: Layers, label: 'Proje bazlı katman kuralları' },
               ].map((item) => (
                 <div
