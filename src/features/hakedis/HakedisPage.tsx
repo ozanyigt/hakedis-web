@@ -387,6 +387,16 @@ export function HakedisPage() {
       setError('Bu projede metraj sonucu yok. Önce Metraj modülünden hesaplama yapın.');
       return;
     }
+
+    const lockedMetraj = metrajResults.filter(
+      (result) => Boolean(result.isLocked) || result.approvalStatus === 3,
+    );
+    if (lockedMetraj.length === 0) {
+      setError(
+        'Aktarılacak kilitli metraj yok. Metraj ekranında sonuçları onaylayıp kilitleyin; onaylanmamış miktar hakedişe alınmaz.',
+      );
+      return;
+    }
     if (contractItems.length === 0) {
       setError('Önce sözleşme kalemleri tanımlayın.');
       return;
@@ -397,7 +407,7 @@ export function HakedisPage() {
     setMessage(null);
     try {
       let imported = 0;
-      for (const result of metrajResults) {
+      for (const result of lockedMetraj) {
         const contractItem = contractItems.find((c) => c.kalemType === result.kalemType);
         if (!contractItem) continue;
 

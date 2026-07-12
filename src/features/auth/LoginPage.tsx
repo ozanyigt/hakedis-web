@@ -3,6 +3,7 @@ import { Link, Navigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { getApiErrorMessage } from '@/api/client';
 import { BrandLogo } from '@/components/brand/BrandLogo';
+import { PageMeta } from '@/components/seo/PageMeta';
 import { BRAND_NAME } from '@/config/brand';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -33,6 +34,12 @@ export function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-950 px-4 py-12">
+      <PageMeta
+        title={`Giriş — ${BRAND_NAME}`}
+        description="SahaMetrik hesabınıza giriş yapın."
+        path="/login"
+        index={false}
+      />
       <div className="w-full max-w-md">
         <Link
           to="/"

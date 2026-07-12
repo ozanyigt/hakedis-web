@@ -13,7 +13,7 @@ export function Header({ onMenuClick }: HeaderProps) {
   const { tenants, tenantId, tenantName, setTenantId, isLoading, canSwitchTenant } = useTenant();
 
   return (
-    <header className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 shadow-sm">
+    <header className="z-30 flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 shadow-sm">
       <div className="flex items-center gap-3">
         <button
           type="button"

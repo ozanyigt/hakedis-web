@@ -36,26 +36,59 @@ apiClient.interceptors.response.use(
   (error: AxiosError) => {
     const statusCode = error.response?.status;
 
-    if (statusCode === 401) {
-      const detail =
-        typeof error.response?.data === 'object' &&
-        error.response?.data !== null &&
-        'detail' in error.response.data
-          ? String((error.response.data as { detail?: string }).detail ?? '')
-          : '';
-      const shouldLogout =
-        detail.toLowerCase().includes('not authenticated') || detail.length === 0;
-
-      if (shouldLogout) {
-        localStorage.removeItem(STORAGE_KEYS.accessToken);
-        notifyUnauthorized();
-      }
+    if (statusCode === 401 && shouldLogoutOnUnauthorized(error.response?.data)) {
+      localStorage.removeItem(STORAGE_KEYS.accessToken);
+      notifyUnauthorized();
     }
 
     const message = extractApiErrorMessage(error);
     return Promise.reject(new ApiError(message, statusCode));
   },
 );
+
+/** Yetki yok (authorization) ≠ oturum yok (authentication). Sadece oturum sorununda çıkış yap. */
+function shouldLogoutOnUnauthorized(data: unknown): boolean {
+  const text = collectAuthMessage(data).toLowerCase();
+
+  // Claim eksik / rol yetersiz → sayfada hata göster, oturumu kırma
+  if (text.includes('not authorized') || text.includes('yetkiniz yok')) {
+    return false;
+  }
+
+  // Gerçek oturum kaybı
+  if (
+    text.includes('not authenticated') ||
+    text.includes('unauthenticated') ||
+    text.includes('token') ||
+    text.includes('expired')
+  ) {
+    return true;
+  }
+
+  // JWT middleware genelde boş/minimal 401 döner
+  return text.length === 0;
+}
+
+function collectAuthMessage(data: unknown): string {
+  if (!data) {
+    return '';
+  }
+
+  if (typeof data === 'string') {
+    return data;
+  }
+
+  if (typeof data !== 'object') {
+    return '';
+  }
+
+  const body = data as Record<string, unknown>;
+  const parts = [body.detail, body.Detail, body.message, body.Message, body.title, body.Title]
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .map((value) => value.trim());
+
+  return parts.join(' ');
+}
 
 export function getApiErrorMessage(error: unknown): string {
   return extractApiErrorMessage(error);

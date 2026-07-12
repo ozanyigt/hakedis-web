@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom';
 import { ExternalLink, X } from 'lucide-react';
 import { MENU_ITEMS } from '@/config/menu';
 import { BrandLogo } from '@/components/brand/BrandLogo';
-import { hasAnyClaim, hasClaim } from '@/config/permissions';
+import { hasAnyClaim, hasClaim, hasModuleClaim } from '@/config/permissions';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTenant } from '@/contexts/TenantContext';
 
@@ -32,7 +32,8 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
       if (!isReady) {
         return false;
       }
-      return hasModule(item.module);
+      // Abonelik/rol modülü + JWT'de ilgili claim olmalı (ölü menü gösterme)
+      return hasModule(item.module) && hasModuleClaim(roles, item.module);
     }
     return true;
   });
@@ -99,7 +100,7 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
 
   return (
     <>
-      <aside className="hidden h-screen w-64 shrink-0 bg-sidebar lg:block">{content}</aside>
+      <aside className="hidden h-full w-64 shrink-0 overflow-y-auto bg-sidebar lg:block">{content}</aside>
 
       {mobileOpen ? (
         <div className="fixed inset-0 z-40 lg:hidden">

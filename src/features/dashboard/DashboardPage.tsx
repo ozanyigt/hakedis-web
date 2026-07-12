@@ -56,9 +56,9 @@ export function DashboardPage() {
 
         {showMetrajLink ? (
           <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="font-semibold text-slate-900">DWG / DXF Yükleme</h3>
+            <h3 className="font-semibold text-slate-900">DXF ile metraj</h3>
             <p className="mt-2 text-sm text-slate-600">
-              Proje çizimlerini yükleyip metraj hesaplamasını başlatın.
+              Proje çizimini DXF yükleyip metrajı hesaplayın, kontrol edip onaylayın.
             </p>
             <Link
               to="/app/metraj"
