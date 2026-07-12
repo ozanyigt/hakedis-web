@@ -1,5 +1,12 @@
 import type { AxiosError } from 'axios';
 
+type ValidationErrorItem = {
+  Property?: string;
+  property?: string;
+  Errors?: string[];
+  errors?: string[];
+};
+
 type ApiErrorBody = {
   message?: string;
   Message?: string;
@@ -9,8 +16,8 @@ type ApiErrorBody = {
   Detail?: string;
   errorMessage?: string;
   ErrorMessage?: string;
-  errors?: Record<string, string[]>;
-  Errors?: Record<string, string[]>;
+  errors?: Record<string, string[]> | ValidationErrorItem[];
+  Errors?: Record<string, string[]> | ValidationErrorItem[];
 };
 
 export class ApiError extends Error {
@@ -23,6 +30,26 @@ export class ApiError extends Error {
   }
 }
 
+function collectMessagesFromUnknown(value: unknown): string[] {
+  if (typeof value === 'string' && value.trim().length > 0) {
+    return [value.trim()];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => collectMessagesFromUnknown(item));
+  }
+
+  if (value && typeof value === 'object') {
+    const item = value as ValidationErrorItem;
+    const nested = item.Errors ?? item.errors;
+    if (nested) {
+      return collectMessagesFromUnknown(nested);
+    }
+  }
+
+  return [];
+}
+
 function readValidationMessages(data?: ApiErrorBody): string[] {
   if (!data) {
     return [];
@@ -33,7 +60,11 @@ function readValidationMessages(data?: ApiErrorBody): string[] {
     return [];
   }
 
-  return Object.values(errors).flat().filter(Boolean);
+  if (Array.isArray(errors)) {
+    return collectMessagesFromUnknown(errors);
+  }
+
+  return Object.values(errors).flatMap((messages) => collectMessagesFromUnknown(messages));
 }
 
 function readPrimaryMessage(data?: ApiErrorBody | string): string | null {
@@ -86,6 +117,9 @@ export function extractApiErrorMessage(error: unknown): string {
 
   const primaryMessage = readPrimaryMessage(data);
   if (primaryMessage) {
+    if (primaryMessage.toLowerCase().includes('not authorized')) {
+      return 'Bu işlem için yetkiniz yok.';
+    }
     return primaryMessage;
   }
 

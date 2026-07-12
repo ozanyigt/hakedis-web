@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { BrandLogo } from '@/components/brand/BrandLogo';
+import { PageMeta } from '@/components/seo/PageMeta';
 import { MarketingFooter } from '@/features/marketing/MarketingFooter';
 import { MarketingHeader } from '@/features/marketing/MarketingHeader';
 
@@ -25,7 +26,7 @@ const FEATURES = [
   {
     icon: Calculator,
     title: 'Otomatik Metraj',
-    description: 'DWG/DXF dosyalarından duvar, sıva, boya, şap ve daha fazlasını hızlıca hesaplayın.',
+    description: 'DXF dosyalarından duvar, sıva, boya, şap ve daha fazlasını hesaplayın. (Şu an DXF; DWG için DXF kaydı gerekir.)',
   },
   {
     icon: Sparkles,
@@ -60,7 +61,7 @@ const MODULES = [
     icon: Calculator,
     name: 'Metraj',
     color: 'from-blue-500/20 to-blue-600/5 border-blue-500/20',
-    items: ['DXF/DWG yükleme', 'Katman eşleme', 'Yapay zeka hüküm önerisi', 'Excel export'],
+    items: ['DXF yükleme', 'Katman eşleme', 'Yapay zeka inceleme önerisi', 'Excel export'],
   },
   {
     icon: ClipboardList,
@@ -95,6 +96,37 @@ export function LandingPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
+      <PageMeta
+        title="SahaMetrik — İnşaat Metraj, Puantaj ve Hakediş Yazılımı"
+        description="SahaMetrik ile inşaat metraj (DXF), şantiye puantajı ve hakediş yönetimini tek platformda yürütün. Firmalar için demo talep edin."
+        path="/"
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'SoftwareApplication',
+            name: 'SahaMetrik',
+            applicationCategory: 'BusinessApplication',
+            operatingSystem: 'Web',
+            url: 'https://sahametrik.com/',
+            description:
+              'İnşaat firmaları için metraj, puantaj ve hakediş yönetim yazılımı.',
+            offers: {
+              '@type': 'Offer',
+              url: 'https://sahametrik.com/demo-talep',
+              priceCurrency: 'TRY',
+              availability: 'https://schema.org/OnlineOnly',
+            },
+            publisher: {
+              '@type': 'Organization',
+              name: 'SahaMetrik',
+              url: 'https://sahametrik.com/',
+            },
+          }),
+        }}
+      />
       <MarketingHeader />
 
       <main>
@@ -112,17 +144,12 @@ export function LandingPage() {
             </div>
 
             <h1 className="mt-6 max-w-3xl text-4xl font-bold leading-tight tracking-tight sm:text-5xl lg:text-6xl">
-              Şantiyenizi ölçün,
-              <span className="bg-gradient-to-r from-brand-400 to-cyan-300 bg-clip-text text-transparent">
-                {' '}
-                sürecinizi yönetin
-              </span>
+              SahaMetrik — inşaat metraj, puantaj ve hakediş
             </h1>
 
             <p className="mt-6 max-w-2xl text-lg leading-relaxed text-slate-400">
-              SahaMetrik; DXF metraj, puantaj ve hakediş süreçlerini tek platformda birleştirir. Metrajda
-              yapay zekadan yararlanarak ihmal ve inceleme kararlarını hızlandırır — nihai onay her zaman
-              sizde kalır.
+              Şantiyenizi ölçün, sürecinizi yönetin. DXF metraj, puantaj ve hakediş tek platformda.
+              Metrajda yapay zeka şüpheli kalemleri işaretler; nihai onay sizde kalır.
             </p>
 
             <div className="mt-10 flex flex-wrap gap-4">

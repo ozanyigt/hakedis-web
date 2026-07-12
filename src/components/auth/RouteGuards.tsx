@@ -1,5 +1,5 @@
 import { Navigate, Outlet } from 'react-router-dom';
-import { hasAnyClaim, hasClaim } from '@/config/permissions';
+import { hasAnyClaim, hasClaim, hasModuleClaim } from '@/config/permissions';
 import { useAuth } from '@/contexts/AuthContext';
 import type { FeatureModuleName } from '@/types';
 import { useTenant } from '@/contexts/TenantContext';
@@ -61,7 +61,7 @@ export function FeatureGate({ module, adminOnly, claim, anyClaim, children }: Fe
       return null;
     }
 
-    if (!hasModule(module)) {
+    if (!hasModule(module) || !hasModuleClaim(roles, module)) {
       return <Navigate to="/app" replace />;
     }
   }

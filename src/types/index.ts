@@ -293,8 +293,8 @@ export const METRAJ_APPROVAL_STATUS_LABELS: Record<number, string> = {
 };
 
 export const METRAJ_JUDGMENT_LABELS: Record<number, string> = {
-  1: 'Say',
-  2: 'Sayma',
+  1: 'Sayılacak',
+  2: 'Sayılmasın',
   3: 'İncele',
 };
 

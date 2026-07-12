@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { CheckCircle2, Mail, Phone } from 'lucide-react';
 import { submitDemoRequest } from '@/api/demoRequests';
 import { getApiErrorMessage } from '@/api/client';
+import { PageMeta } from '@/components/seo/PageMeta';
 import { MarketingFooter } from '@/features/marketing/MarketingFooter';
 import { MarketingHeader } from '@/features/marketing/MarketingHeader';
 
@@ -43,6 +44,11 @@ export function DemoRequestPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
+      <PageMeta
+        title="Demo Talep — SahaMetrik İnşaat Yazılımı"
+        description="SahaMetrik metraj, puantaj ve hakediş demosu için firmanızı kaydedin. Ekibimiz sizinle iletişime geçer."
+        path="/demo-talep"
+      />
       <MarketingHeader />
 
       <main className="mx-auto max-w-6xl px-4 py-12 sm:px-6 sm:py-16">

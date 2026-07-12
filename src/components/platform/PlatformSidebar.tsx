@@ -67,7 +67,7 @@ export function PlatformSidebar({ mobileOpen, onClose }: PlatformSidebarProps) {
 
   return (
     <>
-      <aside className="hidden h-screen w-64 shrink-0 bg-slate-950 lg:block">{content}</aside>
+      <aside className="hidden h-full w-64 shrink-0 overflow-y-auto bg-slate-950 lg:block">{content}</aside>
       {mobileOpen ? (
         <div className="fixed inset-0 z-40 lg:hidden">
           <button

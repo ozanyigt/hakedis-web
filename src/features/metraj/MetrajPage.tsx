@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { FileUp, Loader2, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, FileUp, Loader2, Trash2 } from 'lucide-react';
 import { deleteDrawing, getDrawingsByProject, uploadDrawing } from '@/api/drawings';
 import { exportMetrajExcel } from '@/api/exports';
 import { approveMetrajResults, calculateMetraj, getMetrajResultsByProject } from '@/api/metraj';
@@ -15,11 +15,17 @@ import {
   DRAWING_STATUS_LABELS,
   MEASUREMENT_UNIT_LABELS,
   METRAJ_APPROVAL_STATUS_LABELS,
-  METRAJ_JUDGMENT_LABELS,
   METRAJ_KALEM_LABELS,
 } from '@/types';
 
-const ACCEPTED_EXTENSIONS = ['.dwg', '.dxf'];
+const ACCEPTED_EXTENSIONS = ['.dxf'];
+
+const STEPS = [
+  { id: 1, label: 'Proje seç' },
+  { id: 2, label: 'DXF yükle' },
+  { id: 3, label: 'Hesapla' },
+  { id: 4, label: 'Kontrol et & onayla' },
+] as const;
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) {
@@ -33,8 +39,16 @@ function formatBytes(bytes: number): string {
 
 function judgmentTone(decision?: number | null): string {
   if (decision === 1) return 'bg-emerald-50 text-emerald-800';
-  if (decision === 2) return 'bg-amber-50 text-amber-900';
+  if (decision === 2) return 'bg-slate-100 text-slate-600';
+  if (decision === 3) return 'bg-amber-50 text-amber-900';
   return 'bg-slate-100 text-slate-700';
+}
+
+function judgmentPlainLabel(decision?: number | null): string {
+  if (decision === 1) return 'Sayılacak';
+  if (decision === 2) return 'Sayılmasın';
+  if (decision === 3) return 'İncele';
+  return '-';
 }
 
 export function MetrajPage() {
@@ -54,11 +68,37 @@ export function MetrajPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const pendingReviewDrawings = useMemo(
     () => drawings.filter((drawing) => drawing.status === 5),
     [drawings],
   );
+
+  const unlockedResults = useMemo(
+    () => results.filter((result) => !result.isLocked && result.approvalStatus !== 3),
+    [results],
+  );
+
+  const judgmentSummary = useMemo(() => {
+    const count = { count: 0, review: 0, ignore: 0, other: 0 };
+    const source = unlockedResults.length > 0 ? unlockedResults : results;
+    for (const result of source) {
+      if (result.judgmentDecision === 1) count.count += 1;
+      else if (result.judgmentDecision === 2) count.ignore += 1;
+      else if (result.judgmentDecision === 3) count.review += 1;
+      else count.other += 1;
+    }
+    return count;
+  }, [results, unlockedResults]);
+
+  const activeStep = useMemo(() => {
+    if (!projectId) return 1;
+    if (drawings.length === 0) return 2;
+    if (results.length === 0) return 3;
+    if (pendingReviewDrawings.length > 0 || unlockedResults.length > 0) return 4;
+    return 4;
+  }, [projectId, drawings.length, results.length, pendingReviewDrawings.length, unlockedResults.length]);
 
   const loadProjectData = useCallback(async (activeProjectId: string) => {
     const guidPattern =
@@ -125,7 +165,9 @@ export function MetrajPage() {
 
     const extension = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
     if (!ACCEPTED_EXTENSIONS.includes(extension)) {
-      setError('Yalnızca DWG veya DXF dosyaları yüklenebilir.');
+      setError(
+        'Yalnızca DXF yüklenebilir. DWG dosyanızı AutoCAD, DWG TrueView veya LibreCAD ile “AutoCAD 2000 DXF” olarak kaydedin.',
+      );
       setSelectedFile(null);
       return;
     }
@@ -143,7 +185,7 @@ export function MetrajPage() {
 
   async function handleUpload() {
     if (!tenantId || !projectId || !selectedFile) {
-      setError('Kurum, proje ve dosya seçimi zorunludur.');
+      setError('Kurum, proje ve DXF dosyası seçimi zorunludur.');
       return;
     }
 
@@ -160,7 +202,6 @@ export function MetrajPage() {
 
     try {
       const fileName = selectedFile.name;
-      const isDxf = fileName.toLowerCase().endsWith('.dxf');
       const drawing = await uploadDrawing({
         tenantId,
         projectId,
@@ -169,7 +210,7 @@ export function MetrajPage() {
       setSelectedFile(null);
       await loadProjectData(projectId);
 
-      if (isDxf && drawing.id) {
+      if (drawing.id) {
         setMessage(`${fileName} yüklendi, metraj hesaplanıyor...`);
         await handleCalculate(drawing.id);
       } else {
@@ -212,9 +253,10 @@ export function MetrajPage() {
     try {
       const response = await calculateMetraj(drawingId);
       const aiNote = response.usedAi
-        ? 'Yapay zeka hüküm önerileri üretildi.'
-        : response.judgmentNote || 'Yapay zeka yapılandırılmadı; kalemler incelemeye alındı.';
-      setMessage(`Brüt metraj hesaplandı. ${aiNote} Onayladıktan sonra hakedişe kilitlenir.`);
+        ? 'Sistem şüpheli kalemleri işaretledi; miktar uydurmaz — siz onaylarsınız.'
+        : response.judgmentNote ||
+          'Yapay zeka yapılandırılmadı; tüm kalemler incelemeye alındı. Miktarları kontrol edip onaylayın.';
+      setMessage(`Metraj hesaplandı. ${aiNote}`);
       await loadProjectData(projectId);
     } catch (calcError) {
       setError(getApiErrorMessage(calcError));
@@ -233,7 +275,7 @@ export function MetrajPage() {
     const confirmed = await confirm({
       title: 'Metrajı onayla ve kilitle',
       message:
-        'Onaylanan miktarlar hakediş için kilitlenir. Yapay zeka önerisini düzenlediyseniz tablodaki değerler kullanılır.',
+        'Onaylanan miktarlar kilitlenir ve hakedişe aktarılabilir hale gelir. Tablodaki değerler kullanılır.',
       confirmLabel: 'Onayla',
     });
     if (!confirmed) return;
@@ -253,7 +295,7 @@ export function MetrajPage() {
           };
         }),
       );
-      setMessage('Metraj onaylandı ve kilitlendi.');
+      setMessage('Metraj onaylandı ve kilitlendi. Artık hakedişe aktarabilirsiniz.');
       await loadProjectData(projectId);
     } catch (approveError) {
       setError(getApiErrorMessage(approveError));
@@ -284,30 +326,62 @@ export function MetrajPage() {
       <section>
         <h2 className="text-2xl font-bold text-slate-900">Metraj</h2>
         <p className="mt-1 text-sm text-slate-600">
-          DXF yükleyin → brüt metraj hesaplanır → yapay zeka hüküm önerir → siz onaylayıp kilitleyin.
+          DXF yükleyin, miktarı kontrol edin, onaylayın. Nihai karar sizde kalır.
         </p>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-[1fr_320px]">
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <label className="block text-sm font-medium text-slate-700">
-            Proje
-            <select
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
-              value={projectId}
-              onChange={(event) => setProjectId(event.target.value)}
-            >
-              <option value="">Proje seçin</option>
-              {projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name}
-                </option>
-              ))}
-            </select>
-          </label>
+      <nav aria-label="Metraj adımları" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <ol className="grid gap-3 sm:grid-cols-4">
+          {STEPS.map((step) => {
+            const isActive = activeStep === step.id;
+            const isDone = activeStep > step.id;
+            return (
+              <li
+                key={step.id}
+                className={[
+                  'rounded-lg border px-3 py-2 text-sm',
+                  isActive
+                    ? 'border-brand-500 bg-brand-50 text-brand-900'
+                    : isDone
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                      : 'border-slate-200 bg-slate-50 text-slate-500',
+                ].join(' ')}
+              >
+                <span className="block text-xs font-semibold uppercase tracking-wide opacity-70">
+                  Adım {step.id}
+                </span>
+                <span className="font-medium">{step.label}</span>
+              </li>
+            );
+          })}
+        </ol>
+      </nav>
 
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <label className="block text-sm font-medium text-slate-700">
+          1. Proje
+          <select
+            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+            value={projectId}
+            onChange={(event) => setProjectId(event.target.value)}
+          >
+            <option value="">Proje seçin</option>
+            {projects.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div className="mt-5">
+          <p className="text-sm font-medium text-slate-700">2. DXF dosyası yükle</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Şu an yalnızca DXF desteklenir. DWG ise AutoCAD / TrueView / LibreCAD ile &quot;AutoCAD 2000
+            DXF&quot; kaydedin.
+          </p>
           <div
-            className="mt-4 flex min-h-44 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center hover:border-brand-500 hover:bg-brand-50"
+            className="mt-3 flex min-h-40 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center hover:border-brand-500 hover:bg-brand-50"
             onDragOver={(event) => event.preventDefault()}
             onDrop={(event) => {
               event.preventDefault();
@@ -315,11 +389,11 @@ export function MetrajPage() {
             }}
           >
             <FileUp className="text-brand-600" size={28} />
-            <p className="mt-3 text-sm font-medium text-slate-800">DWG veya DXF sürükleyip bırakın</p>
-            <p className="mt-1 text-xs text-slate-500">veya dosya seçin</p>
+            <p className="mt-3 text-sm font-medium text-slate-800">DXF sürükleyip bırakın</p>
+            <p className="mt-1 text-xs text-slate-500">veya dosya seçin · maks. 300 MB</p>
             <input
               type="file"
-              accept=".dwg,.dxf"
+              accept=".dxf,application/dxf,image/vnd.dxf"
               className="mt-4 text-sm"
               onChange={(event) => handleFileChange(event.target.files)}
             />
@@ -338,27 +412,33 @@ export function MetrajPage() {
             className="mt-4 inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
           >
             {uploading ? <Loader2 className="animate-spin" size={16} /> : null}
-            {uploading ? 'Yükleniyor...' : 'Çizimi Yükle'}
+            {uploading ? 'Yükleniyor ve hesaplanıyor...' : 'Yükle ve hesapla'}
           </button>
         </div>
-
-        <aside className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h3 className="font-semibold text-slate-900">Metraj Akışı</h3>
-          <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-slate-600">
-            <li>Firma politikasını kaydedin</li>
-            <li>Katman eşlemesini yapın</li>
-            <li>DXF yükleyip brüt metrajı hesaplatın</li>
-            <li>Yapay zeka önerisini kontrol edip onaylayın</li>
-          </ol>
-          <p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            API key yoksa da hesaplama çalışır; tüm kalemler &quot;İncele&quot; durumuna düşer.
-          </p>
-        </aside>
       </section>
 
-      <MetrajPolicyPanel />
-
-      {projectId ? <ProjectLayerMappingPanel projectId={projectId} drawings={drawings} /> : null}
+      <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+        <button
+          type="button"
+          className="flex w-full items-center justify-between px-5 py-4 text-left"
+          onClick={() => setShowAdvanced((open) => !open)}
+          aria-expanded={showAdvanced}
+        >
+          <div>
+            <h3 className="font-semibold text-slate-900">Gelişmiş ayarlar</h3>
+            <p className="text-xs text-slate-500">
+              Firma kuralları ve katman eşlemesi — ilk kullanımda gerekmez.
+            </p>
+          </div>
+          {showAdvanced ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+        </button>
+        {showAdvanced ? (
+          <div className="space-y-4 border-t border-slate-100 px-5 pb-5">
+            <MetrajPolicyPanel />
+            {projectId ? <ProjectLayerMappingPanel projectId={projectId} drawings={drawings} /> : null}
+          </div>
+        ) : null}
+      </section>
 
       {message ? (
         <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</p>
@@ -366,7 +446,7 @@ export function MetrajPage() {
       {error ? <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
 
       <section className="space-y-3">
-        <h3 className="text-lg font-semibold text-slate-900">Yüklenen Çizimler</h3>
+        <h3 className="text-lg font-semibold text-slate-900">3. Çizimler</h3>
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
           <table className="min-w-full text-left text-sm">
             <thead className="border-b border-slate-200 bg-slate-50 text-slate-600">
@@ -374,7 +454,7 @@ export function MetrajPage() {
                 <th className="px-4 py-3 font-medium">Dosya</th>
                 <th className="px-4 py-3 font-medium">Boyut</th>
                 <th className="px-4 py-3 font-medium">Durum</th>
-                <th className="px-4 py-3 font-medium">Hata / Not</th>
+                <th className="px-4 py-3 font-medium">Not</th>
                 <th className="px-4 py-3 font-medium">İşlem</th>
               </tr>
             </thead>
@@ -389,7 +469,7 @@ export function MetrajPage() {
               {!loading && drawings.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="px-4 py-6 text-center text-slate-500">
-                    Henüz çizim yüklenmedi.
+                    Henüz DXF yüklenmedi. Yukarıdan dosya seçip &quot;Yükle ve hesapla&quot;ya basın.
                   </td>
                 </tr>
               ) : null}
@@ -409,7 +489,7 @@ export function MetrajPage() {
                         onClick={() => void handleCalculate(drawing.id)}
                         className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                       >
-                        {calculatingId === drawing.id ? 'Hesaplanıyor...' : 'Metraj Hesapla'}
+                        {calculatingId === drawing.id ? 'Hesaplanıyor...' : 'Yeniden hesapla'}
                       </button>
                       {drawing.status === 5 ? (
                         <button
@@ -418,7 +498,7 @@ export function MetrajPage() {
                           onClick={() => void handleApprove(drawing.id)}
                           className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
                         >
-                          {approvingId === drawing.id ? 'Onaylanıyor...' : 'Onayla & Kilitle'}
+                          {approvingId === drawing.id ? 'Onaylanıyor...' : 'Onayla ve kilitle'}
                         </button>
                       ) : null}
                       <button
@@ -443,16 +523,25 @@ export function MetrajPage() {
         </div>
       </section>
 
-      {pendingReviewDrawings.length > 0 ? (
-        <p className="rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
-          {pendingReviewDrawings.length} çizim inceleme bekliyor. Tabloda önerilen miktarı düzenleyip
-          &quot;Onayla &amp; Kilitle&quot; ile hakedişe alın.
-        </p>
+      {results.length > 0 ? (
+        <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+          <p className="font-semibold">4. Kontrol özeti</p>
+          <p className="mt-1">
+            {judgmentSummary.count} kalem sayılacak · {judgmentSummary.review} kalem inceleme ·{' '}
+            {judgmentSummary.ignore} kalem sayılmasın
+            {pendingReviewDrawings.length > 0
+              ? ` · ${pendingReviewDrawings.length} çizim onay bekliyor`
+              : ''}
+          </p>
+          <p className="mt-1 text-xs text-sky-800">
+            Miktarları düzenleyebilirsiniz. Onaylamadan hakedişe aktarılmaz.
+          </p>
+        </div>
       ) : null}
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h3 className="text-lg font-semibold text-slate-900">Metraj Sonuçları</h3>
+          <h3 className="text-lg font-semibold text-slate-900">Metraj sonuçları</h3>
           <ExportExcelButton
             disabled={!projectId || results.length === 0}
             loading={exporting}
@@ -464,12 +553,12 @@ export function MetrajPage() {
             <thead className="border-b border-slate-200 bg-slate-50 text-slate-600">
               <tr>
                 <th className="px-4 py-3 font-medium">Kalem</th>
-                <th className="px-4 py-3 font-medium">Brüt</th>
-                <th className="px-4 py-3 font-medium">Yapay zeka / Onay miktarı</th>
+                <th className="px-4 py-3 font-medium">Hesaplanan</th>
+                <th className="px-4 py-3 font-medium">Onay miktarı</th>
                 <th className="px-4 py-3 font-medium">Birim</th>
-                <th className="px-4 py-3 font-medium">Hüküm</th>
+                <th className="px-4 py-3 font-medium">Öneri</th>
                 <th className="px-4 py-3 font-medium">Durum</th>
-                <th className="px-4 py-3 font-medium">Gerekçe</th>
+                <th className="px-4 py-3 font-medium">Açıklama</th>
                 <th className="px-4 py-3 font-medium">Tarih</th>
               </tr>
             </thead>
@@ -477,7 +566,7 @@ export function MetrajPage() {
               {results.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-4 py-6 text-center text-slate-500">
-                    Metraj sonucu henüz yok.
+                    Henüz sonuç yok. DXF yükleyip hesaplatın.
                   </td>
                 </tr>
               ) : null}
@@ -511,9 +600,7 @@ export function MetrajPage() {
                       <span
                         className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${judgmentTone(result.judgmentDecision)}`}
                       >
-                        {result.judgmentDecision
-                          ? METRAJ_JUDGMENT_LABELS[result.judgmentDecision]
-                          : '-'}
+                        {judgmentPlainLabel(result.judgmentDecision)}
                         {result.policyRef ? ` · ${result.policyRef}` : ''}
                       </span>
                     </td>

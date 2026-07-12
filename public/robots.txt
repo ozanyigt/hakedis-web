@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+Allow: /demo-talep
+
+Disallow: /app
+Disallow: /app/
+Disallow: /platform
+Disallow: /platform/
+Disallow: /login
+Disallow: /register
+
+Sitemap: https://sahametrik.com/sitemap.xml
