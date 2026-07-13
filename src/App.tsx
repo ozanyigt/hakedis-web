@@ -7,7 +7,9 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import { TenantProvider } from '@/contexts/TenantContext';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { DashboardPage } from '@/features/dashboard/DashboardPage';
+import { DailyReportsPage } from '@/features/daily-reports/DailyReportsPage';
 import { HakedisPage } from '@/features/hakedis/HakedisPage';
+import { InventoryPage } from '@/features/inventory/InventoryPage';
 import { MetrajPage } from '@/features/metraj/MetrajPage';
 import { ProjectsPage } from '@/features/projects/ProjectsPage';
 import { PuantajPage } from '@/features/puantaj/PuantajPage';
@@ -78,6 +80,25 @@ export default function App() {
                     element={
                       <FeatureGate module="Puantaj">
                         <PuantajPage />
+                      </FeatureGate>
+                    }
+                  />
+                  <Route
+                    path="gunluk-saha-raporu"
+                    element={
+                      <FeatureGate module="Puantaj" claim="DailySiteReports.Read">
+                        <DailyReportsPage />
+                      </FeatureGate>
+                    }
+                  />
+                  <Route
+                    path="malzeme-stok"
+                    element={
+                      <FeatureGate
+                        module="Puantaj"
+                        claim="Inventory.Read"
+                      >
+                        <InventoryPage />
                       </FeatureGate>
                     }
                   />

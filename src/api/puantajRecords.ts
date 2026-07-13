@@ -1,13 +1,10 @@
 import { apiClient } from '@/api/client';
-import { createEqFilter } from '@/api/dynamicQuery';
 import type { PuantajRecord, PagedResponse } from '@/types';
 
 export async function getPuantajRecordsByProject(projectId: string): Promise<PuantajRecord[]> {
-  const { data } = await apiClient.post<PagedResponse<PuantajRecord>>(
-    '/PuantajRecords/GetListByDynamic',
-    createEqFilter('ProjectId', projectId),
-    { params: { PageIndex: 0, PageSize: 500 } },
-  );
+  const { data } = await apiClient.get<PagedResponse<PuantajRecord>>('/PuantajRecords', {
+    params: { projectId, PageIndex: 0, PageSize: 500 },
+  });
   return data.items ?? [];
 }
 
