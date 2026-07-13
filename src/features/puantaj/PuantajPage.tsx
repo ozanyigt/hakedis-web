@@ -19,6 +19,7 @@ import { useTenant } from '@/contexts/TenantContext';
 import { buildPuantajRecordForm } from '@/utils/formDefaults';
 import type { Project, PuantajRecord, Site, Worker } from '@/types';
 import { PUANTAJ_STATUS_COLORS, PUANTAJ_STATUS_LABELS, WORK_TYPE_LABELS } from '@/types';
+import { useSearchParams } from 'react-router-dom';
 
 type Tab = 'records' | 'workers';
 
@@ -33,6 +34,10 @@ const EMPTY_WORKER_FORM = {
 };
 
 export function PuantajPage() {
+  const [searchParams] = useSearchParams();
+  const linkedProjectId = searchParams.get('projectId') ?? '';
+  const linkedSiteId = searchParams.get('siteId') ?? '';
+  const linkedWorkDate = searchParams.get('workDate') ?? '';
   const { tenantId } = useTenant();
   const { confirm } = useDialog();
   const [tab, setTab] = useState<Tab>('records');
@@ -91,17 +96,26 @@ export function PuantajPage() {
       try {
         const items = await getProjectsByTenant(tenantId);
         setProjects(items);
-        setProjectId(items[0]?.id ?? '');
+        setProjectId(items.some((item) => item.id === linkedProjectId) ? linkedProjectId : (items[0]?.id ?? ''));
       } catch (loadError) {
         setError(getApiErrorMessage(loadError));
       }
     }
     void loadProjects();
-  }, [tenantId]);
+  }, [linkedProjectId, tenantId]);
 
   useEffect(() => {
     void loadData(projectId);
   }, [projectId, loadData]);
+
+  useEffect(() => {
+    if (!linkedSiteId && !linkedWorkDate) return;
+    setRecordForm((current) => ({
+      ...current,
+      siteId: linkedSiteId || current.siteId,
+      workDate: linkedWorkDate || current.workDate,
+    }));
+  }, [linkedSiteId, linkedWorkDate]);
 
   function workerName(id?: string | null) {
     if (!id) return '-';

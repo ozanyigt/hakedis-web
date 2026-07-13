@@ -2,6 +2,8 @@ import type { FeatureModuleName } from '@/types';
 import type { LucideIcon } from 'lucide-react';
 import {
   Calculator,
+  Boxes,
+  ClipboardCheck,
   ClipboardList,
   FolderKanban,
   LayoutDashboard,
@@ -55,6 +57,22 @@ export const MENU_ITEMS: MenuItem[] = [
     label: 'Puantaj',
     path: '/app/puantaj',
     icon: ClipboardList,
+    module: 'Puantaj',
+  },
+  {
+    key: 'daily-site-reports',
+    label: 'Günlük Saha Raporu',
+    path: '/app/gunluk-saha-raporu',
+    icon: ClipboardCheck,
+    claim: 'DailySiteReports.Read',
+    module: 'Puantaj',
+  },
+  {
+    key: 'inventory',
+    label: 'Malzeme ve Stok',
+    path: '/app/malzeme-stok',
+    icon: Boxes,
+    claim: 'Inventory.Read',
     module: 'Puantaj',
   },
   {

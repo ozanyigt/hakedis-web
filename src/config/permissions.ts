@@ -2,7 +2,15 @@ import type { FeatureModuleName } from '@/types';
 
 const MODULE_CLAIM_PREFIXES: Record<FeatureModuleName, string[]> = {
   Metraj: ['MetrajResults', 'MetrajRuleTemplates', 'Drawings'],
-  Puantaj: ['PuantajRecords', 'Workers'],
+  Puantaj: [
+    'PuantajRecords',
+    'Workers',
+    'DailySiteReports',
+    'Materials',
+    'SiteStockBalances',
+    'StockTransactions',
+    'Inventory',
+  ],
   Hakedis: ['HakedisPeriods', 'ContractItems', 'ProgressEntries'],
 };
 
